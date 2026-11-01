@@ -211,6 +211,7 @@ def info_for(s, ratios) -> dict:
         "length_label": f"About {fmt_cm(L)}" + (f" ({how})" if how != "measured" else ""),
         "length_how": how,
         "habitat": habitat_txt,
+        "lifestyle": traits.get("primaryLifestyle") or "",
         "migration": migration,
         "diet": DIET.get(traits.get("trophicNiche") or "", ""),
         "region": region,

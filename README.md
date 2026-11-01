@@ -9,7 +9,7 @@ Daily rotation. The bird is the star; the type takes what is left:
 | Variant | Idea |
 |---|---|
 | `hero` | The bird as big as it fits. The name is set in black Inter in the **largest empty corner** the bird leaves free, at whatever size fits there. Latin name and four facts in small print on the opposite side. |
-| `closeup` | Head and shoulders, 1.75x bigger than the screen, the eye about a third of the way down. Name in a corner the bird does not reach. |
+| `closeup` | Head and shoulders, 1.75x bigger than the screen, the eye about a third of the way down, the bill always inside the frame. Name in a corner the bird does not reach. Aerial species (swifts, raptors, hummingbirds; AVONET `primaryLifestyle`) are often drawn in flight, so they get a body crop at 1.4x instead. |
 | `poster` | The name as a pale backdrop, the bird in front of it. |
 | `weight` | The mass as a big number, then what that is: "about one hen's egg", "about 3 paperclips". Wing and body length compared to a credit card, a pencil, an A4 sheet. The bird takes the right half. |
 | `lifesize` | Only for birds up to 16 cm: the bird at **true size** on the glass (89 px = 1 cm) with a real centimetre ruler. Hummingbirds sit tiny and alone on the white page. |

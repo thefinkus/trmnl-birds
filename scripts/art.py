@@ -1065,12 +1065,28 @@ def _head(st: Sticker):
 def closeup(st: Sticker, info: dict) -> Image.Image:
     """Head and shoulders, larger than the screen. Name small, in a corner."""
     W, H = CANVAS
-    k = min(W / st.w, H / st.h) * 1.75
-    hx, hy, cx = _head(st)
-    # head towards the emptier side, a third down the screen
-    px = W * (0.60 if hx > cx else 0.40)
-    py = H * 0.30
-    x, y = int(px - hx * k), int(py - hy * k)
+    base = min(W / st.w, H / st.h)
+    xs, ys = alpha_points(st.im)
+    margin = 30
+    if info.get("lifestyle") == "Aerial":
+        # swifts, raptors, hummingbirds: often drawn in flight, so the top of the
+        # silhouette is a wingtip. Frame the body instead, a little less tight.
+        k = base * 1.4
+        bx, by = float(np.median(xs)), float(np.median(ys))
+        x, y = int(W * 0.5 - bx * k), int(H * 0.52 - by * k)
+    else:
+        k = base * 1.75
+        hx, hy, cx = _head(st)
+        # the head rows (top 30% of the silhouette, bill included) must fit on screen
+        head_rows = ys < ys.min() + st.h * 0.30
+        hx0, hx1 = float(xs[head_rows].min()), float(xs[head_rows].max())
+        k = max(base * 1.15, min(k, (W - 2 * margin) / max(1.0, hx1 - hx0)))
+        # head towards the emptier side, a third down the screen
+        px = W * (0.60 if hx > cx else 0.40)
+        py = H * 0.30
+        x, y = int(px - hx * k), int(py - hy * k)
+        x = min(x, int(margin - hx0 * k))          # bill/left edge of the head inside
+        x = max(x, int(W - margin - hx1 * k))      # right edge of the head inside
     bird = sharpen(scaled(st, k))
     cv = new_canvas(WHITE)
     _paste_clip(cv, bird, x, y)
