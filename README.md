@@ -4,19 +4,20 @@ One bird a day on a TRMNL X (1872x1404, 16 grays), drawn six different ways.
 Every picture is composed server-side at the exact pixel size of the TRMNL X
 full view, pre-dithered to 16 grays, and shown 1:1, so nothing gets resampled.
 
-Daily rotation (big type, one idea per picture):
+Daily rotation. The bird is the star; the type takes what is left:
 
 | Variant | Idea |
 |---|---|
-| `poster` | The name in giant type, the bird cut out and overlapping the letters. |
-| `names` | **One bird, every name.** Each line is the bird's name in another of the 43 IOC languages, set edge to edge: Japanese katakana next to Ukrainian next to Esperanto. Different languages every day. |
-| `weight` | **The mass as a giant number**, then what that is: "about one hen's egg", "about 3 paperclips". Wing and body length compared to a credit card, a pencil, an A4 sheet. |
-| `knockout` | The name as a window: the bird is only visible through the letters. A small whole bird in the corner tells you what you are looking at. |
-| `lifesize` | Only for birds up to 16 cm: the bird at **true size** on the glass (89 px = 1 cm) with a real centimetre ruler. Hummingbirds sit tiny and alone on the white page. Bigger birds skip this one. |
+| `hero` | The bird as big as it fits. The name is set in black Inter in the **largest empty corner** the bird leaves free, at whatever size fits there. Latin name and four facts in small print on the opposite side. |
+| `closeup` | Head and shoulders, 1.75x bigger than the screen, the eye about a third of the way down. Name in a corner the bird does not reach. |
+| `poster` | The name as a pale backdrop, the bird in front of it. |
+| `weight` | The mass as a big number, then what that is: "about one hen's egg", "about 3 paperclips". Wing and body length compared to a credit card, a pencil, an A4 sheet. The bird takes the right half. |
+| `lifesize` | Only for birds up to 16 cm: the bird at **true size** on the glass (89 px = 1 cm) with a real centimetre ruler. Hummingbirds sit tiny and alone on the white page. |
 
-Also built, selectable but not in the rotation: `flock` (the bird with
-relatives to scale), `album` (sticker calendar), `specimen` (museum tag),
-`guess` (silhouette and clues, reveal after 18:00).
+Also built, selectable but not in the rotation: `names` (the name in up to 43
+languages, each line full width), `knockout` (the bird seen through the
+letters), `flock` (relatives to scale), `album` (sticker calendar),
+`specimen` (museum tag), `guess` (silhouette and clues, reveal after 18:00).
 
 ## How it works
 
@@ -56,7 +57,7 @@ They change daily. Placement is a seeded search that minimises overlap.
 
 `https://<user>.github.io/<repo>/`
 
-- `today.json`: names, facts, clues, and `images.{poster, names, weight, knockout, lifesize, today}` (plus the optional variants if built)
+- `today.json`: names, facts, clues, and `images.{hero, closeup, poster, weight, lifesize, today}` (plus the optional variants if built)
 - one PNG per variant, 1836x1368, 16 grays
 - `today.png`: copy of the day's rotating variant
 

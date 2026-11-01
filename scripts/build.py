@@ -25,9 +25,9 @@ SEED = "trmnl-bird-of-the-day"
 TZ = ZoneInfo("Europe/Berlin")
 EPOCH = dt.date(2026, 1, 1)
 
-ALL_VARIANTS = ["poster", "knockout", "names", "weight", "lifesize", "flock", "album", "specimen", "guess"]
+ALL_VARIANTS = ["hero", "closeup", "poster", "weight", "lifesize", "names", "knockout", "flock", "album", "specimen", "guess"]
 # daily rotation; lifesize only when the bird fits the screen whole
-VARIANTS = ["poster", "knockout", "names", "weight", "lifesize"]
+VARIANTS = ["hero", "closeup", "poster", "weight", "lifesize"]
 LIFESIZE_MAX_CM = 16
 
 REGIONS = {
@@ -332,8 +332,12 @@ def main(argv=None) -> int:
             days.append({"st": cache[x["id"]], "day": i + 1})
         tagline = f"Day {day.day}: {info['name']}"
         save("album", art.album(days, day.day - 1, day.strftime("%B"), str(day.year), first_wd, tagline))
+    if "hero" in variants:
+        save("hero", art.hero(st, info))
+    if "closeup" in variants:
+        save("closeup", art.closeup(st, info))
     if "poster" in variants:
-        save("poster", art.poster(st, info))
+        save("poster", art.poster2(st, info))
     if "specimen" in variants:
         save("specimen", art.specimen(st, info, f"{SEED}:{v}"))
     if "guess" in variants:

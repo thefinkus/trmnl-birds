@@ -39,7 +39,19 @@ def g(level: int) -> int:
 
 # ---------------------------------------------------------------- fonts
 
+_FONT_CACHE: dict = {}
+
+
 def font(name: str, size: int, weight: int | None = None) -> ImageFont.FreeTypeFont:
+    key = (name, size, weight)
+    if key in _FONT_CACHE:
+        return _FONT_CACHE[key]
+    f = _font(name, size, weight)
+    _FONT_CACHE[key] = f
+    return f
+
+
+def _font(name: str, size: int, weight: int | None = None) -> ImageFont.FreeTypeFont:
     files = {
         "serif": "InstrumentSerif-Regular.ttf",
         "serif-italic": "InstrumentSerif-Italic.ttf",
@@ -699,7 +711,7 @@ def _biggest_type(d, words, max_w, max_h, start=700, min_lines=1, max_lines=4, l
                 lw = max(text_w(d, s_, f) for s_ in lines)
                 if lw <= max_w and size * lead * len(lines) <= max_h:
                     break
-                size -= 8
+                size -= 16
             if best is None or size > best[0]:
                 best = (size, lines)
     return best
@@ -880,8 +892,8 @@ def weight(st: Sticker, info: dict) -> Image.Image:
     d = ImageDraw.Draw(cv)
     m = 48
     big = info["mass"] or info["wing"] or info["name"]
-    f = font("sans", 560, 900)
-    while text_w(d, big, f) > W * 0.62 and f.size > 120:
+    f = font("sans", 420, 900)
+    while text_w(d, big, f) > W * 0.5 and f.size > 120:
         f = font("sans", f.size - 10, 900)
     bb = d.textbbox((0, 0), big, font=f)
     d.text((m - bb[0], m - bb[1] + 10), big, font=f, fill=col(BLACK))
@@ -898,14 +910,184 @@ def weight(st: Sticker, info: dict) -> Image.Image:
         c = compare_len(info["length_cm"])
         lines.append((f"Beak to tail: {info['length_cm']:.0f} cm" + (f", {c}." if c else "."), font("serif", 60)))
     for s_, ff in lines:
-        for ln in wrap(d, s_, ff, W * 0.6):
+        for ln in wrap(d, s_, ff, W * 0.48):
             d.text((m, y), ln, font=ff, fill=col(BLACK) if ff.size > 70 else col(DARK))
             y += int(ff.size * 1.15)
         y += 18
     # bird, right side, bottom aligned
-    bird = sharpen(fit(st, W * 0.36, H * 0.70))
-    cv.alpha_composite(bird, (W - m - bird.width, H - m - bird.height - 90))
+    bird = sharpen(fit(st, W * 0.5, H * 0.92))
+    cv.alpha_composite(bird, (W - m - bird.width, H - 30 - bird.height))
     fn = fit_font(d, info["name"], "sans", W - 2 * m, 96, weight=900)
     d.text((m, H - m - 100), info["name"], font=fn, fill=col(BLACK))
     d.text((m, H - m - 110 - 56), info["scientific"], font=font("serif-italic", 48), fill=col(DARK))
+    return cv
+
+
+# ---------------------------------------------------------------- bird first
+
+def _free_rects(occ: np.ndarray, cell: int, W: int, H: int, margin: int):
+    """Corner-anchored empty rectangles (x0, y0, x1, y1) in a coarse occupancy grid."""
+    gh, gw = occ.shape
+    m = margin // cell
+    rects = []
+    for corner in ("tl", "tr", "bl", "br"):
+        grid = occ.copy()
+        if corner[1] == "r":
+            grid = grid[:, ::-1]
+        if corner[0] == "b":
+            grid = grid[::-1, :]
+        # for each height from the corner, the widest free span
+        width = gw - m
+        for h in range(1, gh - m):
+            row = grid[m + h - 1, m:]
+            free = np.argmax(row) if row.any() else len(row)
+            width = min(width, free)
+            if width < 6:
+                break
+            if h % 3:
+                continue
+            rect = [m * cell, m * cell, (m + width) * cell, (m + h) * cell]
+            if corner[1] == "r":
+                rect[0], rect[2] = W - rect[2], W - rect[0]
+            if corner[0] == "b":
+                rect[1], rect[3] = H - rect[3], H - rect[1]
+            rects.append((corner, tuple(rect)))
+    return rects
+
+
+def _occupancy(bird: Image.Image, xy, cell=24):
+    """Coarse grid of cells the bird's alpha touches (vectorised)."""
+    W, H = CANVAS
+    gh, gw = H // cell + 1, W // cell + 1
+    a = np.zeros((gh * cell, gw * cell), dtype=bool)
+    x, y = xy
+    l, t = max(0, x), max(0, y)
+    r, b = min(W, x + bird.width), min(H, y + bird.height)
+    if r > l and b > t:
+        a[t:b, l:r] = np.asarray(bird.getchannel("A"))[t - y:b - y, l - x:r - x] > 40
+    return a.reshape(gh, cell, gw, cell).any(axis=(1, 3))
+
+
+def _fit_name_in(d, words, rects, min_size=48):
+    """Biggest Inter Black setting of `words` inside any of the rects."""
+    best = None
+    for corner, (x0, y0, x1, y1) in rects:
+        w, h = x1 - x0, y1 - y0
+        if w < 200 or h < 60:
+            continue
+        r = _biggest_type(d, words, w, h, start=min(620, int(h / 0.86) + 8), max_lines=3, lead=0.86)
+        if r and r[0] >= min_size and (best is None or r[0] > best[0]):
+            best = (r[0], r[1], corner, (x0, y0, x1, y1))
+    return best
+
+
+def _draw_block(d, lines, size, corner, rect, fill):
+    f = font("sans", size, 900)
+    lead = size * 0.86
+    x0, y0, x1, y1 = rect
+    block_h = lead * len(lines)
+    y = y0 if corner[0] == "t" else y1 - block_h
+    for s_ in lines:
+        bb = f.getbbox(s_)
+        tw = bb[2] - bb[0]
+        x = x0 if corner[1] == "l" else x1 - tw
+        d.text((x - bb[0], y - bb[1] + size * 0.04), s_, font=f, fill=fill)
+        y += lead
+    return f
+
+
+def hero(st: Sticker, info: dict) -> Image.Image:
+    """The bird as big as it gets; the name takes whatever space is left."""
+    W, H = CANVAS
+    d0 = ImageDraw.Draw(Image.new("L", (1, 1)))
+    words = info["name"].upper().replace("-", "- ").split()
+    best = None
+    for frac in (0.92, 0.82, 0.72):
+        bird = fit(st, W * 0.96, H * frac)
+        for ax in (0.5, 0.64, 0.36):
+            x = int(ax * W - bird.width / 2)
+            x = max(20, min(W - bird.width - 20, x))
+            y = int(H - 40 - bird.height) if frac > 0.85 else int((H - bird.height) / 2)
+            occ = _occupancy(bird, (x, y))
+            r = _fit_name_in(d0, words, _free_rects(occ, 24, W, H, 48))
+            if r and (best is None or r[0] > best[0]):
+                best = (r[0], r[1], r[2], r[3], bird, (x, y))
+            if best and best[0] >= 200:
+                break
+        if best and best[0] >= 200:
+            break
+    size, lines, corner, rect, bird, xy = best
+    cv = new_canvas(WHITE)
+    cv.alpha_composite(sharpen(bird), xy)
+    d = ImageDraw.Draw(cv)
+    _draw_block(d, lines, size, corner, rect, col(BLACK))
+    # the small print goes in the opposite vertical half of the same side
+    fm = font("mono", 26)
+    small = [info["scientific"], "  /  ".join(info["facts"][:4])]
+    sx = 48 if corner[1] == "l" else W - 48
+    sy = H - 48 - 70 if corner[0] == "t" else 48
+    for i, s_ in enumerate(small):
+        ff = font("serif-italic", 48) if i == 0 else fm
+        tw = text_w(d, s_, ff)
+        d.text((sx if corner[1] == "l" else sx - tw, sy + i * 54), s_, font=ff, fill=col(DARK))
+    return cv
+
+
+def closeup(st: Sticker, info: dict) -> Image.Image:
+    """Head and shoulders, larger than the screen. Name small, in a corner."""
+    W, H = CANVAS
+    k = min(W / st.w, H / st.h) * 1.75
+    xs, ys = alpha_points(st.im)
+    top = ys.min()
+    band = xs[ys < top + max(3, st.h * 0.08)]
+    hx, hy = float(np.median(band)), float(top)
+    cx = float(np.median(xs))
+    # head towards the emptier side, a third down the screen
+    px = W * (0.60 if hx > cx else 0.40)
+    py = H * 0.30
+    x, y = int(px - hx * k), int(py - hy * k)
+    bird = sharpen(scaled(st, k))
+    cv = new_canvas(WHITE)
+    _paste_clip(cv, bird, x, y)
+    d = ImageDraw.Draw(cv)
+    occ = _occupancy(bird, (x, y))
+    words = info["name"].upper().replace("-", "- ").split()
+    r = _fit_name_in(d, words, _free_rects(occ, 24, W, H, 48), min_size=40)
+    if r:
+        size, lines, corner, rect = r
+        size = min(size, 170)
+        _draw_block(d, lines, size, corner, rect, col(BLACK))
+        fx = rect[0] if corner[1] == "l" else rect[2]
+        fy = rect[1] + size * 0.86 * len(lines) + 16 if corner[0] == "t" else rect[1] - 60
+        if corner[0] == "b":
+            fy = rect[3] - size * 0.86 * len(lines) - 60
+        f2 = font("serif-italic", 44)
+        tw = text_w(d, info["scientific"], f2)
+        d.text((fx if corner[1] == "l" else fx - tw, fy), info["scientific"], font=f2, fill=col(DARK))
+    else:
+        plate = Image.new("RGBA", (W - 96, 120), (WHITE, WHITE, WHITE, 230))
+        cv.alpha_composite(plate, (48, H - 48 - 120))
+        d.text((64, H - 48 - 110), info["name"].upper(), font=fit_font(d, info["name"].upper(), "sans", W - 140, 80, weight=900), fill=col(BLACK))
+    return cv
+
+
+def poster2(st: Sticker, info: dict) -> Image.Image:
+    """Poster, bird first: the name is a pale backdrop, the bird sits in front."""
+    W, H = CANVAS
+    cv = new_canvas(WHITE)
+    d = ImageDraw.Draw(cv)
+    words = info["name"].upper().replace("-", "- ").split()
+    margin = 40
+    size, lines = _biggest_type(d, words, W - 2 * margin, H * 0.78, start=760, lead=0.86)
+    f = font("sans", size, 900)
+    lead = size * 0.86
+    y = H - margin - lead * len(lines) + size * 0.06
+    for s_ in lines:
+        bb = f.getbbox(s_)
+        d.text((margin - bb[0], y - bb[1]), s_, font=f, fill=col(LIGHT))
+        y += lead
+    bird = sharpen(fit(st, W * 0.82, H * 0.92))
+    cv.alpha_composite(bird, (W - margin - bird.width, int(H - 30 - bird.height)))
+    d.text((margin, margin - 8), info["scientific"], font=font("serif-italic", 56), fill=col(BLACK))
+    d.text((margin, margin + 60), "  /  ".join(info["facts"][:4]), font=font("mono", 26), fill=col(DARK))
     return cv

@@ -4,11 +4,13 @@
   description: Which picture to show. "rotate" changes every day.
   options:
     - rotate
+    - hero
+    - closeup
     - poster
-    - knockout
-    - names
     - weight
     - lifesize
+    - names
+    - knockout
     - flock
     - album
     - specimen
