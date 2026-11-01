@@ -1,0 +1,91 @@
+<div class="layout layout--row layout--stretch-y gap--large lg:gap--xlarge">
+
+  <div class="flex flex--center w--[58cqw] h--full shrink-0">
+    {% if image_url != blank %}
+    <img class="image image--contain w--full h--full" src="{{ image_url }}" alt="{{ name }}">
+    {% endif %}
+  </div>
+
+  <div class="flex flex--col flex--left flex--center-y gap--small lg:gap--medium stretch-x text--left">
+
+    {% case name_size %}
+    {% when "xl" %}
+    <span class="title title--large lg:title--xxlarge" data-clamp="2">{{ name }}</span>
+    {% when "l" %}
+    <span class="title title--base lg:title--xlarge" data-clamp="2">{{ name }}</span>
+    {% when "m" %}
+    <span class="title title--base lg:title--large" data-clamp="2">{{ name }}</span>
+    {% else %}
+    <span class="title title--small lg:title--base" data-clamp="3">{{ name }}</span>
+    {% endcase %}
+
+    {% if scientific_name != blank %}
+    <i class="description lg:description--xlarge" data-clamp="2">{{ scientific_name }}</i>
+    {% endif %}
+
+    {% if name_en != blank %}
+    <span class="label label--small lg:label--base 4bit:text--gray-45" data-clamp="2">{{ name_en }}</span>
+    {% endif %}
+
+    <div class="divider"></div>
+
+    {% if family != blank %}
+    <div class="flex flex--col flex--left">
+      <span class="label label--small lg:label--base 4bit:text--gray-45">Familie</span>
+      <span class="title title--small lg:title--base" data-clamp="2">{{ family }}</span>
+    </div>
+    {% endif %}
+
+    {% if has_facts %}
+    <div class="grid grid--cols-2 gap--small lg:gap--medium">
+      {% if weight != blank %}
+      <div class="flex flex--col flex--left">
+        <span class="label label--small lg:label--base 4bit:text--gray-45">Gewicht</span>
+        <span class="title title--small lg:title--base">{{ weight }}</span>
+      </div>
+      {% endif %}
+      {% if wing != blank %}
+      <div class="flex flex--col flex--left">
+        <span class="label label--small lg:label--base 4bit:text--gray-45">Flügellänge</span>
+        <span class="title title--small lg:title--base">{{ wing }}</span>
+      </div>
+      {% endif %}
+      {% if habitat != blank %}
+      <div class="flex flex--col flex--left">
+        <span class="label label--small lg:label--base 4bit:text--gray-45">Lebensraum</span>
+        <span class="title title--small lg:title--base" data-clamp="1">{{ habitat }}</span>
+      </div>
+      {% endif %}
+      {% if migration != blank %}
+      <div class="flex flex--col flex--left">
+        <span class="label label--small lg:label--base 4bit:text--gray-45">Zugverhalten</span>
+        <span class="title title--small lg:title--base" data-clamp="1">{{ migration }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if region != blank %}
+    <div class="flex flex--col flex--left">
+      <span class="label label--small lg:label--base 4bit:text--gray-45">Brutgebiet</span>
+      <span class="title title--small lg:title--base" data-clamp="2">{{ region }}</span>
+    </div>
+    {% endif %}
+
+    {% if iucn != blank %}
+    <div class="flex flex--row flex--left">
+      {% if iucn_alert %}
+      <span class="label label--filled lg:label--large">Rote Liste: {{ iucn }} ({{ iucn_code }})</span>
+      {% else %}
+      <span class="label label--outline lg:label--large">Rote Liste: {{ iucn }} ({{ iucn_code }})</span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<div class="title_bar">
+  <span class="title">Vogel des Tages</span>
+  {% if date_de != blank %}<span class="instance">{{ date_de }}</span>{% endif %}
+</div>

@@ -1,0 +1,5 @@
+/src/
+/site/
+/preview/
+__pycache__/
+*.pyc
