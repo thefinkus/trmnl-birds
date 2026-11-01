@@ -1,17 +1,7 @@
 {% comment %}
-  Bird of the Day. All art is composed server-side at the exact size of the
-  TRMNL X full view, so the markup only places the image, edge to edge.
-  Variant: from the plugin's custom field "variant", else rotate daily.
+  Bird of the Day. The picture is composed server-side at the exact size of
+  the TRMNL X full view (1836x1368, 16 grays), so the markup only places it.
 {% endcomment %}
-{% assign v = trmnl.plugin_settings.custom_fields_values.variant | default: variant | default: "rotate" %}
-{% if v == "rotate" %}{% assign v = variant_of_the_day %}{% endif %}
-{% if v == "guess" %}
-  {% assign utc_off = trmnl.user.utc_offset | default: 3600 %}
-  {% assign hour = "now" | date: "%s" | plus: utc_off | date: "%H" | plus: 0 %}
-  {% if hour >= 18 %}{% assign v = "reveal" %}{% endif %}
-{% endif %}
-{% assign src = images[v] %}
-{% unless src %}{% assign src = images.poster %}{% endunless %}
 <div class="layout p--0">
-  <img class="image w--full h--full" src="{{ src }}" alt="{{ name }}">
+  <img class="image w--full h--full" src="{{ image_url }}" alt="{{ name }}">
 </div>

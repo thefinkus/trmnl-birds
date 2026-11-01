@@ -3,7 +3,3 @@
 /preview/
 __pycache__/
 *.pyc
-/assets/fonts/NotoSansJP*
-/assets/fonts/cjk/
-/assets/fonts/NotoSansSC*
-/assets/fonts/NotoSansKR*

@@ -53,22 +53,6 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: CJK fonts for the Names variant (too big for the repo)
-        uses: actions/cache@v4
-        id: fonts
-        with:
-          path: assets/fonts/cjk
-          key: noto-cjk-v1
-
-      - if: steps.fonts.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p assets/fonts/cjk
-          for f in "notosansjp/NotoSansJP[wght].ttf" "notosanssc/NotoSansSC[wght].ttf" "notosanskr/NotoSansKR[wght].ttf"; do
-            curl -gsSL -o "assets/fonts/cjk/$(basename "$f")" "https://raw.githubusercontent.com/google/fonts/main/ofl/$f"
-          done
-
-      - run: cp assets/fonts/cjk/*.ttf assets/fonts/
-
       - name: Fetch species.json (sparse, blobless)
         run: |
           git init -q src
@@ -78,7 +62,7 @@ jobs:
           git fetch -q --depth 1 --filter=blob:none origin "$SOURCE_REF"
           git checkout -q FETCH_HEAD
 
-      - name: Fetch only the stickers today's pictures need
+      - name: Fetch only today's sticker
         env:
           DATE: ${{ inputs.date }}
           SPECIES: ${{ inputs.species }}
@@ -86,14 +70,12 @@ jobs:
           ARGS=()
           [ -n "$DATE" ] && ARGS+=(--date "$DATE")
           [ -n "$SPECIES" ] && ARGS+=(--id "$SPECIES")
-          python scripts/build.py --source src "${ARGS[@]}" --print-stickers | sed 's|^|/|' > need.txt
-          wc -l need.txt
-          git -C src sparse-checkout add $(cat need.txt)
+          git -C src sparse-checkout add "/$(python scripts/build.py --source src "${ARGS[@]}" --print-stickers)"
 
       - id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build today.json and the pictures
+      - name: Build today.json and today.png
         id: build
         env:
           DATE: ${{ inputs.date }}
