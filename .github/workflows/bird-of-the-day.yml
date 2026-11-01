@@ -16,6 +16,10 @@ on:
       species:
         description: "Force a species id, e.g. Upupa_epops (for tests)"
         required: false
+      refresh_trmnl:
+        description: "Tell TRMNL to fetch the result right away"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -38,6 +42,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      date: ${{ steps.build.outputs.date }}
     steps:
       - uses: actions/checkout@v5
 
@@ -88,6 +94,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build today.json and the pictures
+        id: build
         env:
           DATE: ${{ inputs.date }}
           SPECIES: ${{ inputs.species }}
@@ -101,6 +108,7 @@ jobs:
           cp trmnl/index.html site/index.html
           echo "### $(jq -r '.name + " (" + .scientific + ")"' site/today.json)" >> "$GITHUB_STEP_SUMMARY"
           echo "${PAGES_URL}/today.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "date=$(jq -r .date site/today.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-pages-artifact@v4
         with:
@@ -112,6 +120,55 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # TRMNL polls on a fixed interval (24 h for this plugin) with no time of day,
+  # so the panel would show yesterday's bird for most of the day. This job asks
+  # TRMNL to fetch today.json as soon as it is live. It needs two things on the
+  # repository: the variable TRMNL_PLUGIN_SETTING_ID (the private plugin's id
+  # from its URL on trmnl.com) and the secret TRMNL_API_KEY (Account, API key).
+  # Without the variable the job is skipped; without the secret it exits early.
+  refresh:
+    needs: [build, deploy]
+    if: ${{ vars.TRMNL_PLUGIN_SETTING_ID != '' && (github.event_name != 'workflow_dispatch' || inputs.refresh_trmnl) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait until Pages serves today's today.json
+        env:
+          PAGES_URL: ${{ needs.deploy.outputs.page_url }}
+          EXPECT: ${{ needs.build.outputs.date }}
+        run: |
+          got=""
+          for i in $(seq 1 30); do
+            got=$(curl -fsS -H "Cache-Control: no-cache" "${PAGES_URL%/}/today.json?t=$(date +%s)" | jq -r .date || true)
+            if [ "$got" = "$EXPECT" ]; then echo "live: $got"; exit 0; fi
+            echo "live: ${got:-none}, want $EXPECT, retry $i"; sleep 10
+          done
+          echo "::warning::today.json still shows ${got:-nothing} after 5 min, refreshing anyway"
+
+      - name: Ask TRMNL to fetch it now
+        env:
+          KEY: ${{ secrets.TRMNL_API_KEY }}
+          ID: ${{ vars.TRMNL_PLUGIN_SETTING_ID }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::notice::Secret TRMNL_API_KEY is not set, TRMNL keeps its own 24 h schedule"
+            exit 0
+          fi
+          api="https://trmnl.com/api/plugin_settings/$ID/refreshes"
+          job=$(curl -fsS -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}' "$api" | jq -r .data.job_id)
+          echo "refresh job $job"
+          st=pending; res=""
+          for i in $(seq 1 20); do
+            sleep 3
+            res=$(curl -fsS -H "Authorization: Bearer $KEY" "$api/$job")
+            st=$(echo "$res" | jq -r .data.status)
+            case "$st" in pending|processing) ;; *) break ;; esac
+          done
+          echo "status: $st"
+          echo "$res" | jq -r '"TRMNL refreshed: " + (.data.variables.name // "?") + " (" + (.data.variables.date // "?") + ")"' >> "$GITHUB_STEP_SUMMARY"
+          [ "$st" = "complete" ] && [ "$(echo "$res" | jq -r .data.success)" = "true" ]
