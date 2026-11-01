@@ -11,7 +11,7 @@ on:
         description: "Date to render (YYYY-MM-DD), empty = today in Europe/Berlin"
         required: false
       species:
-        description: "Force a species id, e.g. Upupa_epops (for layout tests)"
+        description: "Force a species id, e.g. Upupa_epops (for tests)"
         required: false
 
 permissions:
@@ -53,7 +53,7 @@ jobs:
           git fetch -q --depth 1 --filter=blob:none origin "$SOURCE_REF"
           git checkout -q FETCH_HEAD
 
-      - name: Fetch today's sticker only
+      - name: Fetch only the stickers today's pictures need
         env:
           DATE: ${{ inputs.date }}
           SPECIES: ${{ inputs.species }}
@@ -61,18 +61,14 @@ jobs:
           ARGS=()
           [ -n "$DATE" ] && ARGS+=(--date "$DATE")
           [ -n "$SPECIES" ] && ARGS+=(--id "$SPECIES")
-          STICKER=$(python scripts/build.py --source src "${ARGS[@]}" --print-sticker)
-          echo "sticker: $STICKER"
-          git -C src sparse-checkout add "/$STICKER"
-          # Fixed test birds for the TRMNL previewer (see README).
-          while read -r name id; do
-            git -C src sparse-checkout add "/$(python scripts/build.py --source src --id "$id" --print-sticker)"
-          done < trmnl/samples.txt
+          python scripts/build.py --source src "${ARGS[@]}" --print-stickers | sed 's|^|/|' > need.txt
+          wc -l need.txt
+          git -C src sparse-checkout add $(cat need.txt)
 
       - id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build today.json and today.png
+      - name: Build today.json and the pictures
         env:
           DATE: ${{ inputs.date }}
           SPECIES: ${{ inputs.species }}
@@ -82,13 +78,9 @@ jobs:
           [ -n "$DATE" ] && ARGS+=(--date "$DATE")
           [ -n "$SPECIES" ] && ARGS+=(--id "$SPECIES")
           python scripts/build.py --source src --out site "${ARGS[@]}"
-          while read -r name id; do
-            python scripts/build.py --source src --out "site/samples/$name" --id "$id" \
-              --base-url "$PAGES_URL/samples/$name" ${DATE:+--date "$DATE"}
-          done < trmnl/samples.txt
           touch site/.nojekyll
           cp trmnl/index.html site/index.html
-          echo "### $(jq -r '.name + " (" + .scientific_name + ")"' site/today.json)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### $(jq -r '.name + " (" + .scientific + ")"' site/today.json)" >> "$GITHUB_STEP_SUMMARY"
           echo "${PAGES_URL}/today.json" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-pages-artifact@v4

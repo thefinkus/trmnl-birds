@@ -1,3 +1,0 @@
-normal Upupa_epops
-longname Terpsiphone_bourbonnensis
-notraits Lagopus_scotica

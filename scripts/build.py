@@ -1,120 +1,57 @@
 #!/usr/bin/env python3
-"""Bird of the Day: pick today's species, render the sticker for TRMNL X, write today.json.
+"""Bird of the Day: pick today's species and render every variant for TRMNL X.
 
-Usage:
-  python scripts/build.py --source SRC_DIR --out OUT_DIR [--date YYYY-MM-DD] [--region PAL]
+  python scripts/build.py --source SRC --out site [--date YYYY-MM-DD] [--region PAL] [--id Genus_species]
+  python scripts/build.py --source SRC --print-stickers   # sticker paths the build will need
 
-SRC_DIR is a (sparse) checkout of github.com/alchaincyf/huashu-bird-sticker.
-Only data/species.json is read first; the one sticker for the chosen species is
-fetched afterwards by the workflow (see --print-sticker).
+SRC is a (sparse) checkout of github.com/alchaincyf/huashu-bird-sticker.
 """
 from __future__ import annotations
 
 import argparse
+import calendar
 import datetime as dt
 import hashlib
 import json
 import os
+import statistics
 import sys
+from collections import defaultdict
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 SEED = "trmnl-bird-of-the-day"
 TZ = ZoneInfo("Europe/Berlin")
+EPOCH = dt.date(2026, 1, 1)
 
-# Output image, in physical pixels of the TRMNL X panel (1872x1404).
-# The sticker column takes about 60% of the width; the height is the panel
-# minus the title bar and the layout padding.
-IMG_W = int(os.environ.get("IMG_W", 1064))
-IMG_H = int(os.environ.get("IMG_H", 1278))
-LEVELS = 16
+VARIANTS = ["lifesize", "flock", "album", "poster", "specimen", "guess"]
 
-REGIONS_DE = {
-    "PAL": "Paläarktis",
-    "NA": "Nordamerika",
-    "MA": "Mittelamerika",
-    "SA": "Südamerika",
-    "AF": "Afrika",
-    "OR": "Süd- und Südostasien",
-    "AU": "Australasien",
-    "AN": "Antarktis",
-    "PO": "Pazifik",
-    "IO": "Indischer Ozean",
-    "AO": "Atlantik",
-    "SO": "Südpolarmeer",
-    "TrO": "Tropische Ozeane",
-    "NO": "Nördliche Ozeane",
-    "Worldwide": "Weltweit",
-    "Worldwide but disjunctly": "Weltweit, verstreut",
+REGIONS = {
+    "PAL": "Palearctic", "NA": "North America", "MA": "Middle America", "SA": "South America",
+    "AF": "Africa", "OR": "Oriental Region", "AU": "Australasia", "AN": "Antarctica",
+    "PO": "Pacific Ocean", "IO": "Indian Ocean", "AO": "Atlantic Ocean", "SO": "Southern Ocean",
+    "TrO": "tropical oceans", "NO": "northern oceans", "Worldwide": "worldwide",
+    "Worldwide but disjunctly": "worldwide, patchily",
 }
-REGIONS_EN = {
-    "PAL": "Palearctic",
-    "NA": "North America",
-    "MA": "Middle America",
-    "SA": "South America",
-    "AF": "Africa",
-    "OR": "Oriental Region",
-    "AU": "Australasia",
-    "AN": "Antarctica",
-    "PO": "Pacific Ocean",
-    "IO": "Indian Ocean",
-    "AO": "Atlantic Ocean",
-    "SO": "Southern Ocean",
-    "TrO": "Tropical Oceans",
-    "NO": "Northern Oceans",
-    "Worldwide": "Worldwide",
-    "Worldwide but disjunctly": "Worldwide, disjunct",
+IUCN = {
+    "LC": "Least Concern", "NT": "Near Threatened", "VU": "Vulnerable", "EN": "Endangered",
+    "CR": "Critically Endangered", "EW": "Extinct in the Wild", "EX": "Extinct", "DD": "Data Deficient",
 }
-IUCN_DE = {
-    "LC": "Nicht gefährdet",
-    "NT": "Potenziell gefährdet",
-    "VU": "Gefährdet",
-    "EN": "Stark gefährdet",
-    "CR": "Vom Aussterben bedroht",
-    "EW": "In der Natur ausgestorben",
-    "EX": "Ausgestorben",
-    "DD": "Datenlage ungenügend",
+HABITAT = {
+    "Human Modified": "farmland and towns", "Riverine": "riversides", "Rock": "rocky places",
+    "Marine": "the open sea", "Coastal": "coasts", "Wetland": "wetlands",
 }
-HABITAT_DE = {
-    "Forest": "Wald",
-    "Woodland": "Lichter Wald",
-    "Shrubland": "Buschland",
-    "Grassland": "Grasland",
-    "Wetland": "Feuchtgebiete",
-    "Riverine": "Flussufer",
-    "Coastal": "Küste",
-    "Marine": "Meer",
-    "Rock": "Fels",
-    "Desert": "Wüste",
-    "Human Modified": "Kulturland",
+DIET = {
+    "Invertivore": "insects and other invertebrates", "Omnivore": "almost anything",
+    "Frugivore": "fruit", "Granivore": "seeds", "Nectarivore": "nectar",
+    "Aquatic predator": "fish and other aquatic animals", "Vertivore": "small vertebrates",
+    "Herbivore terrestrial": "plants", "Herbivore aquatic": "water plants", "Scavenger": "carrion",
 }
-MIGRATION_DE = {
-    "sedentary": "Standvogel",
-    "partially migratory": "Teilzieher",
-    "migratory": "Zugvogel",
-}
-TROPHIC_DE = {
-    "Invertivore": "Wirbellose",
-    "Omnivore": "Allesfresser",
-    "Frugivore": "Früchte",
-    "Granivore": "Samen",
-    "Nectarivore": "Nektar",
-    "Aquatic predator": "Wassertiere",
-    "Vertivore": "Wirbeltiere",
-    "Herbivore terrestrial": "Pflanzen",
-    "Herbivore aquatic": "Wasserpflanzen",
-    "Scavenger": "Aas",
-}
-WEEKDAYS_DE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
-MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
-             "August", "September", "Oktober", "November", "Dezember"]
-
-# UI text must not contain these (house rule).
-FORBIDDEN = {"\u2014": "-", "\u2013": "-", "\u00b7": ",", "\u2027": ","}
+FORBIDDEN = {"—": "-", "–": "-", "·": ",", "‧": ","}
 
 
-def clean(s: str | None) -> str:
+def clean(s) -> str:
     if not s:
         return ""
     s = " ".join(str(s).split()).strip(" /")
@@ -123,37 +60,45 @@ def clean(s: str | None) -> str:
     return s
 
 
-def regions(code: str | None) -> list[str]:
+def regions(code) -> list[str]:
     if not code:
         return []
-    if code.strip() in REGIONS_DE:
+    if code.strip() in REGIONS:
         return [code.strip()]
     return [c.strip() for c in code.split(",") if c.strip()]
 
 
-def eligible(species: list[dict], region: str) -> list[dict]:
-    out = [s for s in species if (s.get("sticker") or {}).get("meetsQualityBar") is True
-           and (s.get("sticker") or {}).get("file")]
+def quality(species):
+    return [s for s in species if (s.get("sticker") or {}).get("meetsQualityBar") is True
+            and (s.get("sticker") or {}).get("file")]
+
+
+def eligible(species, region: str):
+    out = quality(species)
     if region and region.upper() != "ALL":
         want = {r.strip() for r in region.split(",")}
         out = [s for s in out if want & set(regions((s.get("range") or {}).get("breedingRegion")))]
     return out
 
 
-def pick(pool: list[dict], day: dt.date) -> tuple[dict, int]:
-    """Deterministic: a fixed hash-shuffle of the pool, stepped one per day.
+def hkey(*parts) -> str:
+    return hashlib.sha256(":".join(map(str, parts)).encode()).hexdigest()
 
-    Every species appears once before any repeats. The order depends only on the
-    species ids, so it is stable across Python versions and machines.
-    """
-    order = sorted(pool, key=lambda s: hashlib.sha256(f"{SEED}:{s['id']}".encode()).hexdigest())
-    idx = (day - dt.date(2026, 1, 1)).days % len(order)
+
+def ordered(pool):
+    return sorted(pool, key=lambda s: hkey(SEED, s["id"]))
+
+
+def pick(order, day: dt.date):
+    """Fixed hash-shuffle of the pool, one step per day: no repeats within a cycle."""
+    idx = (day - EPOCH).days % len(order)
     return order[idx], idx
 
 
-def fmt_num(x: float, decimals: int) -> str:
-    s = f"{x:,.{decimals}f}"  # 1,234.5
-    return s.replace(",", "X").replace(".", ",").replace("X", ".")
+# ---------------------------------------------------------------- numbers
+
+def num(x: float, decimals: int) -> str:
+    return f"{x:,.{decimals}f}"
 
 
 def fmt_mass(g) -> str:
@@ -161,178 +106,251 @@ def fmt_mass(g) -> str:
         return ""
     g = float(g)
     if g >= 1000:
-        return f"{fmt_num(g / 1000, 1 if g < 10000 else 0)} kg"
-    if g < 10:
-        return f"{fmt_num(g, 1)} g"
-    return f"{fmt_num(g, 0)} g"
+        return f"{num(g / 1000, 1 if g < 10000 else 0)} kg"
+    return f"{num(g, 1 if g < 10 else 0)} g"
 
 
-def fmt_mm(mm) -> str:
-    """AVONET lengths are in mm; show cm (one decimal below 10 cm).
-
-    Kiwis carry a 0.1 mm placeholder for their vestigial wings: treat values
-    under 5 mm as missing so the field is hidden.
-    """
-    if mm is None or float(mm) < 5:
+def fmt_cm(cm) -> str:
+    if cm is None:
         return ""
-    cm = float(mm) / 10
-    return f"{fmt_num(cm, 1 if cm < 10 else 0)} cm"
+    return f"{num(cm, 1 if cm < 10 else 0)} cm"
 
 
-def fmt_date(day: dt.date) -> str:
-    return f"{WEEKDAYS_DE[day.weekday()]}, {day.day}. {MONTHS_DE[day.month - 1]} {day.year}"
+def wing_mm(s):
+    w = (s.get("traits") or {}).get("wingMm")
+    return float(w) if w is not None and float(w) >= 5 else None  # kiwis: 0.1 mm placeholder
 
 
-def name_size(name: str) -> str:
-    """Size tier for the headline so long names step down instead of overflowing.
-
-    The tier follows the longest single word (German compounds cannot wrap) and
-    the total length. Tuned for the right column of the TRMNL X layout.
-    """
-    longest_word = max((len(p) for p in name.replace("-", " ").split()), default=0)
-    if longest_word <= 16 and len(name) <= 32:
-        return "xl"
-    if longest_word <= 18:
-        return "l"
-    if longest_word <= 24:
-        return "m"
-    return "s"
+def length_ratios(species) -> dict:
+    """Median body length / wing length per order, from species that have both."""
+    r = defaultdict(list)
+    for s in species:
+        z, w = (s.get("size") or {}).get("bodyLengthCm"), wing_mm(s)
+        if z and w:
+            r[s["taxonomy"]["order"]].append((sum(z) / 2) / (w / 10))
+    allr = [x for v in r.values() for x in v]
+    out = {o: statistics.median(v) for o, v in r.items() if len(v) >= 8}
+    out["_all"] = statistics.median(allr) if allr else 2.0
+    return out
 
 
-def record(s: dict, day: dt.date, idx: int, pool_size: int, region: str,
-           families_de: dict, image_url: str) -> dict:
-    names = s.get("names") or {}
-    tax = s.get("taxonomy") or {}
+def body_length(s, ratios) -> tuple[float | None, str]:
+    """Body length in cm and how we know it."""
+    w = wing_mm(s)
+    ratio = ratios.get(s["taxonomy"]["order"], ratios["_all"])
+    z = (s.get("size") or {}).get("bodyLengthCm")
+    if z:
+        L = sum(z) / 2
+        if not w or 0.6 * ratio <= L / (w / 10) <= 1.6 * ratio:
+            return L, "measured"
+    if w:
+        return w / 10 * ratio, "estimated from wing length"
+    return None, ""
+
+
+# ---------------------------------------------------------------- record
+
+def info_for(s, ratios) -> dict:
+    names, tax = s.get("names") or {}, s.get("taxonomy") or {}
+    traits, cons = s.get("traits") or {}, s.get("conservation") or {}
     rng = s.get("range") or {}
-    traits = s.get("traits") or {}
-    cons = s.get("conservation") or {}
-
-    name_de = clean(names.get("de"))
-    name_en = clean(names.get("en"))
-    primary = name_de or name_en or clean(s.get("scientificName"))
-    fam_lat = tax.get("family") or ""
-    fam_de = families_de.get(fam_lat, "")
-    family = clean(fam_de or tax.get("familyEnglish") or fam_lat)
-
+    name = clean(names.get("en")) or clean(s.get("scientificName"))
     codes = regions(rng.get("breedingRegion"))
+    region = ", ".join(REGIONS.get(c, c) for c in codes)
+    habitat = traits.get("habitat") or ""
+    habitat_txt = HABITAT.get(habitat, habitat.lower())
+    migration = (traits.get("migration") or "").lower()
+    w = wing_mm(s)
+    L, how = body_length(s, ratios)
     iucn = (cons.get("iucn") or "").upper()
-
-    rec = {
-        "date": day.isoformat(),
-        "date_de": fmt_date(day),
+    mass = traits.get("massG")
+    facts = [x for x in [
+        fmt_mass(mass),
+        f"wing {fmt_cm(w / 10)}" if w else "",
+        habitat_txt,
+        migration,
+        region,
+    ] if x]
+    clues = [x for x in [
+        f"I weigh about {fmt_mass(mass)}." if mass else "",
+        f"My wings are {fmt_cm(w / 10)} long." if w else "",
+        f"I breed in: {region}." if region else "",
+        f"You will find me in {habitat_txt}." if habitat_txt else "",
+        {"sedentary": "I stay put all year.", "migratory": "I migrate.",
+         "partially migratory": "Some of us migrate, some stay."}.get(migration, ""),
+        f"My family: {clean(tax.get('familyEnglish'))}." if tax.get("familyEnglish") else "",
+        f"My name starts with {name[0]} and has {len(name.replace(' ', '').replace('-', ''))} letters.",
+    ] if x]
+    tag_rows = [
+        ("mass", fmt_mass(mass)),
+        ("wing", fmt_cm(w / 10) if w else ""),
+        ("length", f"{fmt_cm(L)}" if L else ""),
+        ("habitat", habitat_txt),
+        ("moves", migration),
+        ("breeds", region),
+        ("status", f"{IUCN[iucn]} ({iucn})" if iucn in IUCN else ""),
+    ]
+    return {
         "id": s["id"],
-        "name": primary,
-        "name_size": name_size(primary),
-        "name_de": name_de,
-        "name_en": name_en if name_en != primary else "",
-        "name_en_raw": name_en,
-        "scientific_name": clean(s.get("scientificName")),
-        "family": family,
-        "family_latin": fam_lat,
+        "name": name,
+        "scientific": clean(s.get("scientificName")),
+        "authority": clean(s.get("authority")),
+        "family_latin": tax.get("family") or "",
         "family_en": clean(tax.get("familyEnglish")),
-        "family_de": fam_de,
         "order": tax.get("order") or "",
-        "weight": fmt_mass(traits.get("massG")),
-        "wing": fmt_mm(traits.get("wingMm")),
-        "tail": fmt_mm(traits.get("tailMm")),
-        "habitat": HABITAT_DE.get(traits.get("habitat") or "", clean(traits.get("habitat"))),
-        "migration": MIGRATION_DE.get(traits.get("migration") or "", clean(traits.get("migration"))),
-        "diet": TROPHIC_DE.get(traits.get("trophicNiche") or "", clean(traits.get("trophicNiche"))),
-        "traits_inferred": bool(traits.get("inferred")),
-        "iucn_code": iucn if iucn in IUCN_DE else "",
-        "iucn": IUCN_DE.get(iucn, ""),
-        "iucn_alert": iucn in {"VU", "EN", "CR", "EW", "EX"},
+        "seq": tax.get("seq") or 0,
+        "mass": fmt_mass(mass),
+        "wing_mm": w,
+        "wing": fmt_cm(w / 10) if w else "",
+        "length_cm": L,
+        "length_label": f"About {fmt_cm(L)}" + (f" ({how})" if how != "measured" else ""),
+        "length_how": how,
+        "habitat": habitat_txt,
+        "migration": migration,
+        "diet": DIET.get(traits.get("trophicNiche") or "", ""),
+        "region": region,
         "region_codes": codes,
-        "region": ", ".join(REGIONS_DE.get(c, c) for c in codes),
-        "region_en": ", ".join(REGIONS_EN.get(c, c) for c in codes),
-        "has_facts": False,  # set below
-        "image_url": image_url,
-        "sticker_file": s["sticker"]["file"],
-        "pool": {"region": region or "ALL", "size": pool_size, "index": idx},
-        "credit": "Sticker: huashu-bird-sticker (PolyForm Shield 1.0.0). Daten: IOC 15.2, AVONET, Wikidata",
+        "iucn_code": iucn if iucn in IUCN else "",
+        "iucn": IUCN.get(iucn, ""),
+        "facts": facts,
+        "clues": clues,
+        "tag_rows": tag_rows,
+        "sticker": s["sticker"]["file"],
     }
-    rec["has_facts"] = any(rec[k] for k in ("weight", "wing", "habitat", "migration"))
-    return rec
 
 
-def render_png(src: Path, dst: Path, w: int = IMG_W, h: int = IMG_H) -> None:
-    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+def relatives(s, species, day, limit=11):
+    """Same family first, then same order; similar size so the scale stays readable."""
+    q = quality(species)
+    w0 = wing_mm(s) or 100.0
+    def ok(x):
+        w = wing_mm(x)
+        return x["id"] != s["id"] and w and 0.33 <= w / w0 <= 3.0
+    fam = [x for x in q if x["taxonomy"]["family"] == s["taxonomy"]["family"] and ok(x)]
+    out = sorted(fam, key=lambda x: hkey(SEED, day, x["id"]))[:limit]
+    if len(out) < 7:
+        rest = [x for x in q if x["taxonomy"]["order"] == s["taxonomy"]["order"] and ok(x) and x not in out]
+        out += sorted(rest, key=lambda x: hkey(SEED, day, x["id"]))[: limit - len(out)]
+    return out
 
-    im = Image.open(src).convert("RGBA")
-    bbox = im.getchannel("A").point(lambda a: 255 if a > 8 else 0).getbbox()
-    if bbox:
-        im = im.crop(bbox)
 
-    # Fit into the canvas with a small margin, keep the aspect ratio.
-    margin = 0.03
-    scale = min(w * (1 - 2 * margin) / im.width, h * (1 - 2 * margin) / im.height)
-    im = im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))), Image.LANCZOS)
+def month_days(order, day):
+    first = day.replace(day=1)
+    n = calendar.monthrange(day.year, day.month)[1]
+    return [pick(order, first + dt.timedelta(i))[0] for i in range(n)]
 
-    # Flatten onto white.
-    canvas = Image.new("RGBA", (w, h), (255, 255, 255, 255))
-    canvas.alpha_composite(im, ((w - im.width) // 2, (h - im.height) // 2))
-    mask = Image.new("L", (w, h), 0)
-    mask.paste(im.getchannel("A"), ((w - im.width) // 2, (h - im.height) // 2))
-    gray = canvas.convert("RGB").convert("L")
 
-    # Contrast: stretch the bird's own tonal range (ignore the white page), then
-    # a gentle extra contrast and sharpening for e-paper.
-    body = mask.point(lambda a: 255 if a > 200 else 0)
-    gray = ImageOps.autocontrast(gray, cutoff=(1, 1), mask=body)
-    gray = ImageEnhance.Contrast(gray).enhance(1.25)
-    gray = gray.filter(ImageFilter.UnsharpMask(radius=2, percent=80, threshold=2))
-
-    # Quantize to 16 evenly spaced grays with Floyd-Steinberg.
-    pal = Image.new("P", (1, 1))
-    levels = [round(i * 255 / (LEVELS - 1)) for i in range(LEVELS)]
-    pal.putpalette([v for lv in levels for v in (lv, lv, lv)] + [0] * 3 * (256 - LEVELS))
-    q = gray.convert("RGB").quantize(palette=pal, dither=Image.Dither.FLOYDSTEINBERG)
-    q = q.convert("L")
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    q.save(dst, optimize=True)
-
+# ---------------------------------------------------------------- main
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--source", required=True, type=Path)
     ap.add_argument("--out", type=Path, default=ROOT / "site")
-    ap.add_argument("--date", help="YYYY-MM-DD, default: today in Europe/Berlin")
+    ap.add_argument("--date")
     ap.add_argument("--region", default=os.environ.get("REGION", "ALL"))
     ap.add_argument("--base-url", default=os.environ.get("PAGES_URL", ""))
-    ap.add_argument("--id", help="force a species id (for testing layouts)")
-    ap.add_argument("--print-sticker", action="store_true",
-                    help="only print the sticker path for the pick and exit")
+    ap.add_argument("--id", help="force today's species (for layout tests)")
+    ap.add_argument("--variants", default=",".join(VARIANTS))
+    ap.add_argument("--print-stickers", action="store_true")
     a = ap.parse_args(argv)
 
     day = dt.date.fromisoformat(a.date) if a.date else dt.datetime.now(TZ).date()
     data = json.loads((a.source / "data" / "species.json").read_text(encoding="utf-8"))
     species = data["species"]
+    by_id = {s["id"]: s for s in species}
     pool = eligible(species, a.region)
     if not pool:
         print(f"no species for region {a.region!r}", file=sys.stderr)
         return 2
+    order = ordered(pool)
+    s, idx = (by_id[a.id], -1) if a.id else pick(order, day)
+    rel = relatives(s, species, day)
+    month = month_days(order, day)
     if a.id:
-        s = next(x for x in species if x["id"] == a.id)
-        idx = -1
-    else:
-        s, idx = pick(pool, day)
+        month[day.day - 1] = s
+    variants = [v for v in a.variants.split(",") if v]
 
-    if a.print_sticker:
-        print(s["sticker"]["file"])
+    if a.print_stickers:
+        need = {s["sticker"]["file"]}
+        if "flock" in variants:
+            need |= {x["sticker"]["file"] for x in rel}
+        if "album" in variants:
+            need |= {x["sticker"]["file"] for x in month}
+        print("\n".join(sorted(need)))
         return 0
 
-    families_de = json.loads((ROOT / "data" / "families_de.json").read_text(encoding="utf-8"))["families"]
+    sys.path.insert(0, str(Path(__file__).parent))
+    import art
+
+    ratios = length_ratios(species)
+    info = info_for(s, ratios)
+    src = lambda x: a.source / x["sticker"]["file"]
+    st = art.load_sticker(src(s))
+    out = a.out
     base = a.base_url.rstrip("/")
-    image_url = f"{base}/today.png?v={day.isoformat()}" if base else f"today.png?v={day.isoformat()}"
+    v = day.isoformat()
+    url = lambda name: f"{base + '/' if base else ''}{name}.png?v={v}"
+    images = {}
 
-    rec = record(s, day, idx, len(pool), a.region, families_de, image_url)
-    rec["source"] = {"taxonomy": data.get("taxonomy"), "version": data.get("version"),
-                     "ref": os.environ.get("SOURCE_REF", "")}
+    def save(name, canvas):
+        art.finish(canvas, out / f"{name}.png")
+        images[name] = url(name)
 
-    a.out.mkdir(parents=True, exist_ok=True)
-    render_png(a.source / s["sticker"]["file"], a.out / "today.png")
-    (a.out / "today.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"{day} {a.region or 'ALL'} #{idx}/{len(pool)}: {rec['name']} ({rec['scientific_name']})")
+    if "lifesize" in variants and info["length_cm"]:
+        save("lifesize", art.life_size(st, info))
+    if "flock" in variants:
+        others = [(art.load_sticker(src(x)), info_for(x, ratios)) for x in rel]
+        me = dict(info)
+        if not me["wing_mm"]:
+            me["wing_mm"] = statistics.median([o[1]["wing_mm"] for o in others]) if others else 100.0
+        fam = info["family_en"] or info["family_latin"]
+        caption = {
+            "title": info["name"],
+            "subtitle": (f"and {len(others)} relative{'s' if len(others) != 1 else ''}, "
+                         f"drawn to scale by wing length") if others else "alone today, no close relatives",
+            "footer": f"{fam}  /  {info['scientific']}",
+        }
+        save("flock", art.flock((st, me), others, f"{SEED}:{v}", caption))
+    if "album" in variants:
+        first_wd = day.replace(day=1).weekday()
+        cache = {}
+        days = []
+        for i, x in enumerate(month):
+            if x["id"] not in cache:
+                cache[x["id"]] = art.load_sticker(src(x))
+            days.append({"st": cache[x["id"]], "day": i + 1})
+        tagline = f"Day {day.day}: {info['name']}"
+        save("album", art.album(days, day.day - 1, day.strftime("%B"), str(day.year), first_wd, tagline))
+    if "poster" in variants:
+        save("poster", art.poster(st, info))
+    if "specimen" in variants:
+        save("specimen", art.specimen(st, info, f"{SEED}:{v}"))
+    if "guess" in variants:
+        save("guess", art.guess(st, info, reveal=False))
+        save("reveal", art.guess(st, info, reveal=True))
+
+    vod = VARIANTS[(day - EPOCH).days % len(VARIANTS)]
+    if vod not in images:
+        vod = "poster" if "poster" in images else next(iter(images))
+    import shutil
+    shutil.copyfile(out / f"{vod}.png", out / "today.png")
+    images["today"] = url("today")
+
+    rec = {k: v for k, v in info.items() if k not in ("tag_rows", "wing_mm", "sticker")}
+    rec.update({
+        "date": day.isoformat(),
+        "date_label": f"{day.strftime('%A')}, {day.day} {day.strftime('%B %Y')}",
+        "images": images,
+        "variant_of_the_day": vod,
+        "relatives": [x["id"] for x in rel],
+        "pool": {"region": a.region or "ALL", "size": len(pool), "index": idx},
+        "source": {"taxonomy": data.get("taxonomy"), "version": data.get("version"),
+                   "ref": os.environ.get("SOURCE_REF", "")},
+        "credit": "Stickers: huashu-bird-sticker (PolyForm Shield 1.0.0). Data: IOC 15.2, AVONET, Wikidata.",
+    })
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "today.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{day} {a.region or 'ALL'} #{idx}/{len(pool)}: {info['name']} ({info['scientific']}) -> {', '.join(images)}")
     return 0
 
 

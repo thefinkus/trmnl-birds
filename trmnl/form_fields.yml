@@ -1,0 +1,13 @@
+- keyname: variant
+  field_type: select
+  name: Variant
+  description: Which picture to show. "rotate" changes every day.
+  options:
+    - rotate
+    - lifesize
+    - flock
+    - album
+    - poster
+    - specimen
+    - guess
+  default: rotate
