@@ -27,7 +27,7 @@ EPOCH = dt.date(2026, 1, 1)
 
 ALL_VARIANTS = ["hero", "closeup", "poster", "weight", "lifesize", "names", "knockout", "flock", "album", "specimen", "guess"]
 # daily rotation; lifesize only when the bird fits the screen whole
-VARIANTS = ["hero", "closeup", "poster", "weight", "lifesize"]
+VARIANTS = ["hero", "closeup"]
 LIFESIZE_MAX_CM = 16
 
 REGIONS = {

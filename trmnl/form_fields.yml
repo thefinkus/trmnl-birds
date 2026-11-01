@@ -1,7 +1,7 @@
 - keyname: variant
   field_type: select
   name: Variant
-  description: Which picture to show. "rotate" changes every day.
+  description: Which picture to show. "rotate" alternates hero and closeup. Other options need the variant built (see README).
   options:
     - rotate
     - hero

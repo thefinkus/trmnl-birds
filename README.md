@@ -4,7 +4,7 @@ One bird a day on a TRMNL X (1872x1404, 16 grays), drawn six different ways.
 Every picture is composed server-side at the exact pixel size of the TRMNL X
 full view, pre-dithered to 16 grays, and shown 1:1, so nothing gets resampled.
 
-Daily rotation. The bird is the star; the type takes what is left:
+Daily rotation, alternating between two pictures. The bird is the star; the type takes what is left:
 
 | Variant | Idea |
 |---|---|
