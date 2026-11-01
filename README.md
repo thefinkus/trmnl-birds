@@ -72,6 +72,13 @@ They change daily. Placement is a seeded search that minimises overlap.
 The schedule then runs nightly (`17 1 * * *` UTC = 02:17 winter, 03:17
 summer in Berlin). Manual runs take an optional `date` and `species` id.
 
+4. So the panel changes in the morning, not whenever TRMNL's 24-hour timer
+   happens to fire: Settings, Secrets and variables, Actions. Variable
+   `TRMNL_PLUGIN_SETTING_ID` = the number in the plugin's URL on trmnl.com
+   (`/plugins/<id>/edit`), secret `TRMNL_API_KEY` = your account API key.
+   The `refresh` job then asks TRMNL to fetch `today.json` right after each
+   deploy. Manual runs can skip that with the `refresh_trmnl` box.
+
 ### TRMNL
 
 1. **Plugins**, **Private Plugin**, **Add new**, name it `Bird of the Day`.
