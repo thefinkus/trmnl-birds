@@ -1021,27 +1021,52 @@ def hero(st: Sticker, info: dict) -> Image.Image:
     cv.alpha_composite(sharpen(bird), xy)
     d = ImageDraw.Draw(cv)
     _draw_block(d, lines, size, corner, rect, col(BLACK))
-    # the small print goes in the opposite vertical half of the same side
+    # small print: a free corner other than the name's, else under the name
     fm = font("mono", 26)
+    fi = font("serif-italic", 48)
     small = [info["scientific"], "  /  ".join(info["facts"][:4])]
-    sx = 48 if corner[1] == "l" else W - 48
-    sy = H - 48 - 70 if corner[0] == "t" else 48
+    need_w = max(text_w(d, small[0], fi), text_w(d, small[1], fm)) + 10
+    occ = _occupancy(bird, xy)
+    free = {c: r for c, r in reversed(_free_rects(occ, 24, W, H, 48))}  # tallest per corner
+    pick = None
+    for c in ("tl", "tr", "bl", "br"):
+        if c == corner or c not in free:
+            continue
+        x0, y0, x1, y1 = free[c]
+        if x1 - x0 >= need_w and y1 - y0 >= 110:
+            pick = c
+            break
+    if pick:
+        x0, y0, x1, y1 = free[pick]
+        sx = x0 if pick[1] == "l" else x1
+        sy = y0 if pick[0] == "t" else y1 - 110
+    else:
+        x0, y0, x1, y1 = rect
+        sx = x0 if corner[1] == "l" else x1
+        sy = (y1 - size * 0.86 * len(lines) - 120) if corner[0] == "b" else (y0 + size * 0.86 * len(lines) + 10)
+        pick = corner
     for i, s_ in enumerate(small):
-        ff = font("serif-italic", 48) if i == 0 else fm
+        ff = fi if i == 0 else fm
         tw = text_w(d, s_, ff)
-        d.text((sx if corner[1] == "l" else sx - tw, sy + i * 54), s_, font=ff, fill=col(DARK))
+        d.text((sx if pick[1] == "l" else sx - tw, sy + i * 54), s_, font=ff, fill=col(DARK))
     return cv
+
+
+def _head(st: Sticker):
+    """(hx, hy, cx): the head, taken as the topmost band of the silhouette.
+    Right for perched and standing birds, which is nearly all of the
+    stickers; a bird in flight with a raised wing gets the wingtip instead."""
+    xs, ys = alpha_points(st.im)
+    top = ys.min()
+    band = xs[ys < top + max(3, st.h * 0.08)]
+    return float(np.median(band)), float(top), float(np.median(xs))
 
 
 def closeup(st: Sticker, info: dict) -> Image.Image:
     """Head and shoulders, larger than the screen. Name small, in a corner."""
     W, H = CANVAS
     k = min(W / st.w, H / st.h) * 1.75
-    xs, ys = alpha_points(st.im)
-    top = ys.min()
-    band = xs[ys < top + max(3, st.h * 0.08)]
-    hx, hy = float(np.median(band)), float(top)
-    cx = float(np.median(xs))
+    hx, hy, cx = _head(st)
     # head towards the emptier side, a third down the screen
     px = W * (0.60 if hx > cx else 0.40)
     py = H * 0.30
