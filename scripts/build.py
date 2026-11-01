@@ -25,7 +25,10 @@ SEED = "trmnl-bird-of-the-day"
 TZ = ZoneInfo("Europe/Berlin")
 EPOCH = dt.date(2026, 1, 1)
 
-VARIANTS = ["lifesize", "flock", "album", "poster", "specimen", "guess"]
+ALL_VARIANTS = ["poster", "knockout", "names", "weight", "lifesize", "flock", "album", "specimen", "guess"]
+# daily rotation; lifesize only when the bird fits the screen whole
+VARIANTS = ["poster", "knockout", "names", "weight", "lifesize"]
+LIFESIZE_MAX_CM = 16
 
 REGIONS = {
     "PAL": "Palearctic", "NA": "North America", "MA": "Middle America", "SA": "South America",
@@ -200,7 +203,9 @@ def info_for(s, ratios) -> dict:
         "order": tax.get("order") or "",
         "seq": tax.get("seq") or 0,
         "mass": fmt_mass(mass),
+        "mass_g": float(mass) if mass is not None else None,
         "wing_mm": w,
+        "wing_cm": w / 10 if w else None,
         "wing": fmt_cm(w / 10) if w else "",
         "length_cm": L,
         "length_label": f"About {fmt_cm(L)}" + (f" ({how})" if how != "measured" else ""),
@@ -250,7 +255,7 @@ def main(argv=None) -> int:
     ap.add_argument("--region", default=os.environ.get("REGION", "ALL"))
     ap.add_argument("--base-url", default=os.environ.get("PAGES_URL", ""))
     ap.add_argument("--id", help="force today's species (for layout tests)")
-    ap.add_argument("--variants", default=",".join(VARIANTS))
+    ap.add_argument("--variants", default=",".join(VARIANTS), help="comma list, or all")
     ap.add_argument("--print-stickers", action="store_true")
     a = ap.parse_args(argv)
 
@@ -268,7 +273,7 @@ def main(argv=None) -> int:
     month = month_days(order, day)
     if a.id:
         month[day.day - 1] = s
-    variants = [v for v in a.variants.split(",") if v]
+    variants = ALL_VARIANTS if a.variants == "all" else [v for v in a.variants.split(",") if v]
 
     if a.print_stickers:
         need = {s["sticker"]["file"]}
@@ -296,8 +301,14 @@ def main(argv=None) -> int:
         art.finish(canvas, out / f"{name}.png")
         images[name] = url(name)
 
-    if "lifesize" in variants and info["length_cm"]:
+    if "lifesize" in variants and info["length_cm"] and info["length_cm"] <= LIFESIZE_MAX_CM:
         save("lifesize", art.life_size(st, info))
+    if "knockout" in variants:
+        save("knockout", art.knockout(st, info))
+    if "names" in variants:
+        save("names", art.names(st, info, s.get("names") or {}, f"{SEED}:{v}"))
+    if "weight" in variants and (info["mass_g"] or info["wing_cm"]):
+        save("weight", art.weight(st, info))
     if "flock" in variants:
         others = [(art.load_sticker(src(x)), info_for(x, ratios)) for x in rel]
         me = dict(info)
@@ -329,14 +340,14 @@ def main(argv=None) -> int:
         save("guess", art.guess(st, info, reveal=False))
         save("reveal", art.guess(st, info, reveal=True))
 
-    vod = VARIANTS[(day - EPOCH).days % len(VARIANTS)]
-    if vod not in images:
-        vod = "poster" if "poster" in images else next(iter(images))
+    # rotate through the variants that exist today
+    todays = [x for x in VARIANTS if x in images] or list(images)
+    vod = todays[(day - EPOCH).days % len(todays)]
     import shutil
     shutil.copyfile(out / f"{vod}.png", out / "today.png")
     images["today"] = url("today")
 
-    rec = {k: v for k, v in info.items() if k not in ("tag_rows", "wing_mm", "sticker")}
+    rec = {k: v for k, v in info.items() if k not in ("tag_rows", "wing_mm", "wing_cm", "mass_g", "sticker")}
     rec.update({
         "date": day.isoformat(),
         "date_label": f"{day.strftime('%A')}, {day.day} {day.strftime('%B %Y')}",

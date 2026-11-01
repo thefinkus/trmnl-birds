@@ -683,3 +683,229 @@ def guess(st: Sticker, info: dict, reveal: bool) -> Image.Image:
     foot = "Answer after 6 pm." if not reveal else "New bird tomorrow."
     d.text((x, H - 100), foot, font=font("serif-italic", 44), fill=col(MID))
     return cv
+
+
+# ---------------------------------------------------------------- 7 knockout
+
+def _biggest_type(d, words, max_w, max_h, start=700, min_lines=1, max_lines=4, lead=0.86):
+    """Largest Inter Black that sets `words` in 1..max_lines lines inside max_w x max_h."""
+    best = None
+    for nl in range(min_lines, min(max_lines, len(words)) + 1):
+        for split in _splits(words, nl):
+            lines = [" ".join(p).replace("- ", "-") for p in split]
+            size = start
+            while size > 60:
+                f = font("sans", size, 900)
+                lw = max(text_w(d, s_, f) for s_ in lines)
+                if lw <= max_w and size * lead * len(lines) <= max_h:
+                    break
+                size -= 8
+            if best is None or size > best[0]:
+                best = (size, lines)
+    return best
+
+
+def knockout(st: Sticker, info: dict) -> Image.Image:
+    """The name in giant letters; the bird is only visible through them."""
+    W, H = CANVAS
+    cv = new_canvas(WHITE)
+    d = ImageDraw.Draw(cv)
+    margin = 40
+    words = info["name"].upper().replace("-", "- ").split()
+    size, lines = _biggest_type(d, words, W - 2 * margin, H - 2 * margin - 120, start=900, lead=0.84)
+    f = font("sans", size, 900)
+    lead = size * 0.84
+    block_h = lead * len(lines)
+    # text mask
+    mask = Image.new("L", CANVAS, 0)
+    md = ImageDraw.Draw(mask)
+    y = margin + 110 + (H - 2 * margin - 110 - block_h) / 2 + size * 0.06
+    y_top = y
+    for s_ in lines:
+        asc = f.getbbox(s_)[1]
+        md.text((margin - f.getbbox(s_)[0], y - asc), s_, font=f, fill=255)
+        y += lead
+    bbox = mask.getbbox()
+    # bird scaled to cover the text block, centred on it
+    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    k = max(bw / st.w, bh / st.h) * 1.08
+    bird = sharpen(scaled(st, k))
+    layer = Image.new("RGBA", CANVAS, (LIGHT, LIGHT, LIGHT, 255))
+    _paste_clip(layer, bird, int(bbox[0] + (bw - bird.width) / 2), int(bbox[1] + (bh - bird.height) / 2))
+    cv.paste(layer, (0, 0), mask)
+    # small print: the whole bird, so you know what you are looking at
+    thumb = sharpen(fit(st, 300, 200))
+    cv.alpha_composite(thumb, (W - margin - thumb.width, margin))
+    d.text((margin, margin - 8), info["scientific"], font=font("serif-italic", 56), fill=col(BLACK))
+    d.text((margin, margin + 60), "  /  ".join(info["facts"][:4]), font=font("mono", 26), fill=col(DARK))
+    return cv
+
+
+# ---------------------------------------------------------------- 8 names
+
+LANG = {
+    "en": "English", "de": "German", "fr": "French", "es": "Spanish", "it": "Italian", "nl": "Dutch",
+    "pt-PT": "Portuguese", "pt-x-lusophone": "Portuguese (Brazil)", "ca": "Catalan", "da": "Danish",
+    "sv": "Swedish", "no": "Norwegian", "fi": "Finnish", "is": "Icelandic", "pl": "Polish",
+    "cs": "Czech", "sk": "Slovak", "hu": "Hungarian", "hr": "Croatian", "sr": "Serbian",
+    "sl": "Slovene", "lt": "Lithuanian", "lv": "Latvian", "et": "Estonian", "ro": "Romanian",
+    "tr": "Turkish", "eo": "Esperanto", "af": "Afrikaans", "id": "Indonesian", "se": "Northern Sami",
+    "ru": "Russian", "uk": "Ukrainian", "bg": "Bulgarian", "mk": "Macedonian", "be": "Belarusian",
+    "el": "Greek", "ja": "Japanese", "zh-Hans": "Chinese", "zh-Hant": "Chinese (trad.)", "ko": "Korean",
+    "ar": "Arabic", "fa": "Persian", "he": "Hebrew", "th": "Thai", "ml": "Malayalam",
+}
+SCRIPT_FONT = {
+    "ja": "NotoSansJP[wght].ttf", "zh-Hans": "NotoSansSC[wght].ttf", "zh-Hant": "NotoSansSC[wght].ttf",
+    "ko": "NotoSansKR[wght].ttf", "ar": "NotoSansArabic[wdth,wght].ttf", "fa": "NotoSansArabic[wdth,wght].ttf",
+    "he": "NotoSansHebrew[wdth,wght].ttf", "th": "NotoSansThai[wdth,wght].ttf",
+    "ml": "NotoSansMalayalam[wdth,wght].ttf",
+}
+
+
+def _font_for(lang: str, size: int):
+    fn = SCRIPT_FONT.get(lang)
+    if fn and (FONTS / fn).exists():
+        f = ImageFont.truetype(str(FONTS / fn), size)
+        try:
+            axes = f.get_variation_axes()
+            f.set_variation_by_axes([a["maximum"] if a["name"] == b"Weight" else a["default"] for a in axes])
+        except Exception:
+            pass
+        return f
+    if fn:
+        return None
+    return font("sans", size, 900)
+
+
+def names(st: Sticker, info: dict, all_names: dict, seed: str) -> Image.Image:
+    """Every line is one language's name for the bird, set to the full width."""
+    W, H = CANVAS
+    rnd = random.Random(seed)
+    cv = new_canvas(WHITE)
+    d = ImageDraw.Draw(cv)
+    margin = 40
+    items = [(k, v.strip()) for k, v in all_names.items() if k in LANG and v and v.strip()]
+    # drop duplicates (same spelling in another language), keep English first
+    seen, uniq = set(), []
+    for k, v in sorted(items, key=lambda kv: (kv[0] != "en", kv[0] != "de")):
+        key = v.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append((k, v))
+    head, rest = uniq[:1], uniq[1:]
+    rnd.shuffle(rest)
+    y = margin
+    label_f = font("mono", 22)
+    thumb = with_border(sharpen(fit(st, 420, 320)), 10)
+    tx, ty = W - margin - thumb.width + 20, H - margin - thumb.height + 20
+    for k, v in head + rest:
+        text = v.upper() if k not in SCRIPT_FONT else v
+        # lines that would run under the bird get the narrower width
+        max_w = W - 2 * margin if y + 60 < ty - 30 else tx - margin - 30
+        # largest size that fills the width, capped
+        lo, hi = 40, 520
+        while hi - lo > 2:
+            mid = (lo + hi) // 2
+            f = _font_for(k, mid)
+            if f is None:
+                break
+            if text_w(d, text, f) <= max_w:
+                lo = mid
+            else:
+                hi = mid
+        f = _font_for(k, lo)
+        if f is None:
+            continue
+        bb = d.textbbox((0, 0), text, font=f)
+        h = bb[3] - bb[1]
+        if y + h > H - margin:
+            break
+        if k == "en":
+            d.text((margin - bb[0], y - bb[1]), text, font=f, fill=col(BLACK))
+        else:
+            d.text((margin - bb[0], y - bb[1]), text, font=f, fill=col(BLACK))
+        # language tag, tiny, hanging in the gap above the line
+        d.text((margin + 2, y - 26), LANG[k].lower(), font=label_f, fill=col(MID))
+        y += h + 30
+    drop(cv, thumb, (tx, ty), shadow=(8, 10), shade=LIGHT)
+    return cv
+
+
+# ---------------------------------------------------------------- 9 weight
+
+MASS_REF = [  # grams, singular, plural
+    (1.0, "paperclip", "paperclips"), (4.0, "sugar cube", "sugar cubes"),
+    (11.5, "AAA battery", "AAA batteries"), (23.0, "AA battery", "AA batteries"),
+    (46.0, "golf ball", "golf balls"), (58.0, "tennis ball", "tennis balls"), (60.0, "hen's egg", "hen's eggs"),
+    (100.0, "lemon", "lemons"), (145.0, "baseball", "baseballs"), (180.0, "apple", "apples"),
+    (330.0, "can of soda", "cans of soda"), (500.0, "loaf of bread", "loaves of bread"),
+    (1000.0, "bag of sugar", "bags of sugar"), (1500.0, "bottle of water (1.5 l)", "bottles of water (1.5 l)"),
+    (2300.0, "brick", "bricks"), (4000.0, "house cat", "house cats"), (7000.0, "bowling ball", "bowling balls"),
+    (12000.0, "car tyre", "car tyres"), (25000.0, "medium dog", "medium dogs"), (70000.0, "adult human", "adult humans"),
+]
+LEN_REF = [  # cm
+    (2.4, "a coin"), (5.0, "a matchbox"), (8.6, "a credit card"), (12.0, "a teaspoon"), (15.0, "a smartphone"),
+    (19.0, "a pencil"), (21.0, "the short side of an A4 sheet"), (30.0, "a school ruler"), (45.0, "a guitar neck"),
+    (60.0, "a baguette"), (84.0, "a baseball bat"), (100.0, "an umbrella"), (120.0, "a bicycle"), (200.0, "a door"),
+]
+
+
+def compare_mass(g: float) -> str:
+    best = None
+    for ref, one, many in MASS_REF:
+        n = g / ref
+        if n < 0.5 or n > 9.5:
+            continue
+        r = round(n)
+        err = abs(n - r) / max(1, r) + 0.02 * r  # prefer exact, prefer small counts
+        if best is None or err < best[0]:
+            best = (err, r, one, many)
+    if not best:
+        return ""
+    _, r, one, many = best
+    return f"about one {one}" if r == 1 else f"about {r} {many}"
+
+
+def compare_len(cm: float) -> str:
+    ref, name = min(LEN_REF, key=lambda r: abs(math.log(r[0] / cm)))
+    if abs(math.log(ref / cm)) > 0.2:
+        return ""
+    return f"about {name}"
+
+
+def weight(st: Sticker, info: dict) -> Image.Image:
+    W, H = CANVAS
+    cv = new_canvas(WHITE)
+    d = ImageDraw.Draw(cv)
+    m = 48
+    big = info["mass"] or info["wing"] or info["name"]
+    f = font("sans", 560, 900)
+    while text_w(d, big, f) > W * 0.62 and f.size > 120:
+        f = font("sans", f.size - 10, 900)
+    bb = d.textbbox((0, 0), big, font=f)
+    d.text((m - bb[0], m - bb[1] + 10), big, font=f, fill=col(BLACK))
+    y = m + (bb[3] - bb[1]) + 60
+    lines = []
+    if info["mass_g"]:
+        c = compare_mass(info["mass_g"])
+        if c:
+            lines.append(("That is " + c + ".", font("serif-italic", 92)))
+    if info["wing_cm"]:
+        c = compare_len(info["wing_cm"])
+        lines.append((f"Each wing: {info['wing']}" + (f", {c}." if c else "."), font("serif", 60)))
+    if info["length_cm"]:
+        c = compare_len(info["length_cm"])
+        lines.append((f"Beak to tail: {info['length_cm']:.0f} cm" + (f", {c}." if c else "."), font("serif", 60)))
+    for s_, ff in lines:
+        for ln in wrap(d, s_, ff, W * 0.6):
+            d.text((m, y), ln, font=ff, fill=col(BLACK) if ff.size > 70 else col(DARK))
+            y += int(ff.size * 1.15)
+        y += 18
+    # bird, right side, bottom aligned
+    bird = sharpen(fit(st, W * 0.36, H * 0.70))
+    cv.alpha_composite(bird, (W - m - bird.width, H - m - bird.height - 90))
+    fn = fit_font(d, info["name"], "sans", W - 2 * m, 96, weight=900)
+    d.text((m, H - m - 100), info["name"], font=fn, fill=col(BLACK))
+    d.text((m, H - m - 110 - 56), info["scientific"], font=font("serif-italic", 48), fill=col(DARK))
+    return cv

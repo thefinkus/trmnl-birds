@@ -44,6 +44,22 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: CJK fonts for the Names variant (too big for the repo)
+        uses: actions/cache@v4
+        id: fonts
+        with:
+          path: assets/fonts/cjk
+          key: noto-cjk-v1
+
+      - if: steps.fonts.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p assets/fonts/cjk
+          for f in "notosansjp/NotoSansJP[wght].ttf" "notosanssc/NotoSansSC[wght].ttf" "notosanskr/NotoSansKR[wght].ttf"; do
+            curl -gsSL -o "assets/fonts/cjk/$(basename "$f")" "https://raw.githubusercontent.com/google/fonts/main/ofl/$f"
+          done
+
+      - run: cp assets/fonts/cjk/*.ttf assets/fonts/
+
       - name: Fetch species.json (sparse, blobless)
         run: |
           git init -q src

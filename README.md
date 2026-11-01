@@ -4,15 +4,19 @@ One bird a day on a TRMNL X (1872x1404, 16 grays), drawn six different ways.
 Every picture is composed server-side at the exact pixel size of the TRMNL X
 full view, pre-dithered to 16 grays, and shown 1:1, so nothing gets resampled.
 
+Daily rotation (big type, one idea per picture):
+
 | Variant | Idea |
 |---|---|
-| `lifesize` | The bird at **true size** on the glass (89 px = 1 cm), with a real centimetre ruler you can check with your own. Small birds fit whole. Bigger ones show a true-size window around the head plus a "you are here" map; very big ones are abstracted into a screen-print, because the source drawing has no detail left at that scale. |
-| `flock` | Today's bird sticker-bombed among up to 11 relatives from its family, **every sticker scaled by real wing length**, die-cut white edges, hard shadows, a `TODAY` tag. |
-| `album` | The month as a **sticker calendar** that fills up. Past days are stuck-in stickers, today is framed, future days are pale silhouettes of the birds still to come. |
 | `poster` | The name in giant type, the bird cut out and overlapping the letters. |
-| `specimen` | A museum plate: family, IOC number, the bird, and a **specimen tag tied to its foot** with mass, wing, length, habitat, movement, range and Red List status. |
-| `guess` | "Who am I?": a black silhouette and seven clues, from vague to giveaway. After 18:00 local time it flips to the reveal. |
-| `rotate` | A different variant every day (default). |
+| `names` | **One bird, every name.** Each line is the bird's name in another of the 43 IOC languages, set edge to edge: Japanese katakana next to Ukrainian next to Esperanto. Different languages every day. |
+| `weight` | **The mass as a giant number**, then what that is: "about one hen's egg", "about 3 paperclips". Wing and body length compared to a credit card, a pencil, an A4 sheet. |
+| `knockout` | The name as a window: the bird is only visible through the letters. A small whole bird in the corner tells you what you are looking at. |
+| `lifesize` | Only for birds up to 16 cm: the bird at **true size** on the glass (89 px = 1 cm) with a real centimetre ruler. Hummingbirds sit tiny and alone on the white page. Bigger birds skip this one. |
+
+Also built, selectable but not in the rotation: `flock` (the bird with
+relatives to scale), `album` (sticker calendar), `specimen` (museum tag),
+`guess` (silhouette and clues, reveal after 18:00).
 
 ## How it works
 
@@ -37,6 +41,12 @@ any repeat. The source repo is pinned (`SOURCE_REF`) so the order never shifts.
 comes from the data where it is plausible, otherwise it is estimated from
 wing length times the median length/wing ratio of the bird's order (computed
 from the dataset; passerines about 2.0, owls 1.4). The caption says which.
+`LIFESIZE_MAX_CM` in `scripts/build.py` sets the cut-off.
+
+**Names:** Latin, Cyrillic and Greek are set in Inter Black. Japanese,
+Chinese, Korean, Arabic, Hebrew, Thai and Malayalam use Noto Sans; the three
+CJK files are 10 to 18 MB each, so the Action downloads them (cached) instead
+of keeping them in the repo. Without them those languages are skipped.
 
 **Flock:** relatives come from the same family, else the same order, limited
 to a third to three times today's wing length so nobody turns into a speck.
@@ -46,7 +56,7 @@ They change daily. Placement is a seeded search that minimises overlap.
 
 `https://<user>.github.io/<repo>/`
 
-- `today.json`: names, facts, clues, and `images.{lifesize, flock, album, poster, specimen, guess, reveal, today}`
+- `today.json`: names, facts, clues, and `images.{poster, names, weight, knockout, lifesize, today}` (plus the optional variants if built)
 - one PNG per variant, 1836x1368, 16 grays
 - `today.png`: copy of the day's rotating variant
 
@@ -82,7 +92,7 @@ account, adjust those two lines.
 ```bash
 pip install -r requirements-dev.txt
 python scripts/build.py --source path/to/huashu-bird-sticker --out site --date 2026-11-18
-python scripts/build.py --source path/to/huashu-bird-sticker --out site --id Upupa_epops --variants lifesize
+python scripts/build.py --source path/to/huashu-bird-sticker --out site --id Upupa_epops --variants all
 ```
 
 `tools/render_preview.py` renders the Liquid inside the TRMNL framework and
@@ -94,8 +104,8 @@ python scripts/build.py --source path/to/huashu-bird-sticker --out site --id Upu
   `ai-illustration` everywhere. (`data/families_de.json` is kept for a German
   edition later; the current pictures are English.)
 - AVONET lists the kiwis' wing as 0.1 mm; wings under 5 mm count as missing.
-- 366 of the 7,668 quality species have no traits. They get no `lifesize`
-  (no length to scale by); the markup falls back to `poster`.
+- 366 of the 7,668 quality species have no traits. They get no `lifesize` or
+  `weight`; the rotation just skips those days' missing variants.
 - One German name has a stray trailing slash in the source; it is stripped.
 
 ## Credits and licenses
@@ -109,8 +119,8 @@ python scripts/build.py --source path/to/huashu-bird-sticker --out site --id Upu
   [IOC World Bird List v15.2](https://worldbirdnames.org/) (CC BY 3.0),
   [AVONET](https://doi.org/10.1111/ele.13898) (Tobias et al. 2022, CC BY 4.0)
   and [Wikidata](https://www.wikidata.org/) (CC0).
-- **Fonts:** Instrument Serif, IBM Plex Mono and Inter, all SIL Open Font
-  License (`assets/fonts/`).
+- **Fonts:** Instrument Serif, IBM Plex Mono, Inter and Noto Sans, all SIL
+  Open Font License (`assets/fonts/`).
 - **Code:** MIT, see `LICENSE`.
 
 Personal, private plugin. Not meant to be published as a public TRMNL recipe.

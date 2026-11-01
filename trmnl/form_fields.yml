@@ -4,10 +4,13 @@
   description: Which picture to show. "rotate" changes every day.
   options:
     - rotate
+    - poster
+    - knockout
+    - names
+    - weight
     - lifesize
     - flock
     - album
-    - poster
     - specimen
     - guess
   default: rotate
