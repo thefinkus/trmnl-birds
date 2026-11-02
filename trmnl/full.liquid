@@ -1,11 +1,22 @@
 {% comment %}
   Bird of the Day. The pictures are composed server-side at the exact size of
-  the TRMNL X full view (1836x1368, 16 grays), so the markup only places one.
-  today.json carries the day's framing as image_url and all three under
-  images.*; the Framing field picks one, "today" follows the daily rotation.
+  the view inside the frame, so the markup only places one of them: TRMNL X
+  1836x1368 (16 grays) or OG 780x460 (1-bit), each also as a portrait. The
+  Framing field picks hero, closeup or quiet; "today" follows the daily
+  rotation. Older today.json files only carry image_url, which stays the fallback.
 {% endcomment %}
 {%- assign framing = trmnl.plugin_settings.custom_fields_values.framing | default: "today" -%}
-{%- assign src = images[framing] | default: image_url -%}
+{%- assign x_land = images[framing] | default: image_url -%}
+{%- assign x_port = images_portrait[framing] | default: x_land -%}
+{%- assign og_land = images_og[framing] | default: x_land -%}
+{%- assign og_port = images_og_portrait[framing] | default: og_land -%}
 <div class="layout p--0">
-  <img class="image w--full h--full" src="{{ src }}" alt="{{ name }}">
+  <div class="w--full h--full hidden lg:flex">
+    <img class="image image--contain w--full h--full portrait:hidden" src="{{ x_land }}" alt="{{ name }}">
+    <img class="image image--contain w--full h--full hidden portrait:block" src="{{ x_port }}" alt="{{ name }}">
+  </div>
+  <div class="w--full h--full lg:hidden">
+    <img class="image image-dither image--contain w--full h--full portrait:hidden" src="{{ og_land }}" alt="{{ name }}">
+    <img class="image image-dither image--contain w--full h--full hidden portrait:block" src="{{ og_port }}" alt="{{ name }}">
+  </div>
 </div>

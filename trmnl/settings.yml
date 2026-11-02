@@ -4,14 +4,30 @@ description: One bird a day, as big as it fits
 strategy: polling
 polling_verb: get
 polling_url: https://thefinkus.github.io/trmnl-birds/today.json
-refresh_interval: 1440
+refresh_interval: 360
 dark_mode: 'no'
 no_screen_padding: 'no'
 custom_fields:
+  - keyname: about
+    name: About this plugin
+    field_type: author_bio
+    category: art,images
+    description: >-
+      One bird a day, drawn as a sticker, on your panel as big as it fits. Three framings take
+      turns day by day: the whole bird with its name in big caps (hero), head and shoulders
+      (close-up), or the bird alone with one small line (quiet); pick one for good with the
+      Framing field. The pictures are composed every night for TRMNL X and OG, landscape and
+      portrait, and served as static files from GitHub Pages. No account, no key: add the
+      plugin, choose a framing, done.<br/>Stickers:
+      <a href="https://github.com/alchaincyf/huashu-bird-sticker">huashu-bird-sticker</a> by
+      Huashu (alchaincyf), PolyForm Shield 1.0.0. Data: IOC World Bird List 15.2 (CC BY 3.0),
+      AVONET (Tobias et al. 2022, CC BY 4.0), Wikidata (CC0).<br/>Made by thefinkus
+    github_url: https://github.com/thefinkus/trmnl-birds
+    learn_more_url: https://github.com/alchaincyf/huashu-bird-sticker
   - keyname: framing
     name: Framing
     field_type: select
-    description: Which picture of the day's bird you see. All three are made every night.
+    description: Which picture of the day's bird you see. All three are made every night; half and quadrant layouts always show the quiet one.
     options:
       - 'Daily rotation: hero, close-up and quiet take turns': today
       - 'Hero: the whole bird, name in big caps, Latin name and facts': hero

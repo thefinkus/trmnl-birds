@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Bird of the Day: pick today's species and render its pictures for TRMNL X.
+"""Bird of the Day: pick today's species and render its pictures for TRMNL panels.
 
   python scripts/build.py --source SRC --out site [--date YYYY-MM-DD] [--region PAL] [--id Genus_species] [--variant hero]
   python scripts/build.py --source SRC --print-stickers   # the sticker path the build needs
 
 SRC is a (sparse) checkout of github.com/alchaincyf/huashu-bird-sticker.
+
+Every framing (hero, closeup, quiet) is rendered for four targets: TRMNL X
+landscape (`hero.png`), X portrait (`hero_portrait.png`), OG landscape
+(`hero_og.png`, 1-bit) and OG portrait (`hero_og_portrait.png`). The day's
+framing is copied to `today*.png`; today.json lists all of them under
+`images`, `images_portrait`, `images_og` and `images_og_portrait`.
 """
 from __future__ import annotations
 
@@ -164,20 +170,26 @@ def main(argv=None) -> int:
 
     renders = {"hero": art.hero, "closeup": art.closeup, "quiet": art.quiet}
     vod = a.variant or VARIANTS[(day - VARIANT_EPOCH).days % len(VARIANTS)]
-    images = {}
-    for name in VARIANTS:
-        art.finish(renders[name](st, info), a.out / f"{name}.png")
-        images[name] = url(name)
-    shutil.copyfile(a.out / f"{vod}.png", a.out / "today.png")
-    images["today"] = url("today")
-    image_url = url("today")
+    sets, targets = {}, {}
+    for sp in art.SPECS:
+        suffix = f"_{sp.key}" if sp.key else ""
+        images = {}
+        for name in VARIANTS:
+            art.finish(renders[name](st, info, sp), a.out / f"{name}{suffix}.png", levels=sp.levels)
+            images[name] = url(f"{name}{suffix}")
+        shutil.copyfile(a.out / f"{vod}{suffix}.png", a.out / f"today{suffix}.png")
+        images["today"] = url(f"today{suffix}")
+        sets[f"images{suffix}"] = images
+        targets[f"images{suffix}"] = f"{sp.W}x{sp.H}, {sp.levels} grays"
+    image_url = sets["images"]["today"]
 
     rec = dict(info)
     rec.update({
         "date": day.isoformat(),
         "date_label": f"{day.strftime('%A')}, {day.day} {day.strftime('%B %Y')}",
         "image_url": image_url,
-        "images": images,
+        **sets,
+        "targets": targets,
         "variant_of_the_day": vod,
         "pool": {"region": a.region or "ALL", "size": len(pool), "index": idx},
         "source": {"taxonomy": data.get("taxonomy"), "version": data.get("version"),

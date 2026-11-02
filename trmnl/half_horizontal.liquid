@@ -1,0 +1,5 @@
+{% comment %} Bird of the Day, half horizontal: the quiet picture, fitted into the cell. {% endcomment %}
+<div class="layout p--0">
+  <img class="image image--contain w--full h--full hidden lg:block" src="{{ images.quiet | default: image_url }}" alt="{{ name }}">
+  <img class="image image-dither image--contain w--full h--full lg:hidden" src="{{ images_og.quiet | default: image_url }}" alt="{{ name }}">
+</div>

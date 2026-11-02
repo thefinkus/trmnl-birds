@@ -1,20 +1,23 @@
-# Bird of the Day for TRMNL X
+# Bird of the Day for TRMNL
 
-One bird a day on a TRMNL X (1872x1404, 16 grays), in one of three framings
+One bird a day on a TRMNL panel (X at 1872x1404 in 16 grays, OG at 800x480 in
+1-bit, landscape or portrait), in one of three framings
 that rotate day by day: `hero` (the whole bird as big as it fits, its name in
 the largest free corner, Latin name and four facts in small print), `closeup`
 (head and shoulders at 1.75x, the bill always in frame) and `quiet` (the bird
 alone, one small line with both names). Composed server-side at the exact
-pixel size of the TRMNL X full view, pre-dithered to 16 grays, shown 1:1.
+pixel size of each panel's full view, pre-dithered to the panel's grays, shown 1:1.
 
 ```
 GitHub Action (daily, ~03:00 Europe/Berlin, and on every push to main)
   sparse + blobless fetch of huashu-bird-sticker @ pinned commit:
     data/species.json, then only today's sticker
   scripts/build.py   pick the bird, write today.json
-  scripts/art.py     compose hero/closeup/quiet.png, copy the day's to today.png
+  scripts/art.py     compose hero, closeup and quiet for TRMNL X and OG, landscape
+                     and portrait (12 PNGs), copy the day's framing to today*.png
   deploy site/ to GitHub Pages, then ask TRMNL to refresh
-TRMNL private plugin, Polling on today.json, trmnl/settings.yml + full.liquid;
+TRMNL plugin (recipe), Polling on today.json, trmnl/settings.yml + four layouts;
+  the markup shows the picture for the panel and orientation it runs on,
   the Framing field picks today / hero / closeup / quiet
 ```
 
@@ -35,6 +38,14 @@ species (AVONET `primaryLifestyle`), often drawn in flight, get a body crop at
 when the bird reaches into that corner; the bird shrinks a step if neither is
 free.
 
+**Panels:** every framing is composed four times, for the X (1836x1368 inside
+the 18 px frame) and the OG (780x460 inside the 10 px frame), each in landscape
+and portrait. Lengths tuned on the X are halved on the OG; there the facts line
+is dropped, the Latin name is set in Inter Italic (Instrument Serif's hairlines
+break up in 1-bit) and goes right under the name, and all type is pure black,
+since any gray would dither to speckle. The name keeps its margin on both
+sides, which matters in the narrow portrait views.
+
 **Rotation:** `VARIANTS` in `scripts/build.py`, one step per day from
 `VARIANT_EPOCH` (2026-11-02 shows `hero`). `--variant` forces one for a run.
 
@@ -42,9 +53,14 @@ free.
 
 - `https://<user>.github.io/<repo>/today.json`: name, Latin name, family,
   mass, wing, habitat, migration, range, IUCN status, `image_url`,
-  `variant_of_the_day`, `images.{hero, closeup, quiet, today}`
-- `https://<user>.github.io/<repo>/today.png`: the day's picture, 1836x1368, 16 grays
-- `hero.png`, `closeup.png`, `quiet.png`: all three framings of the day's bird
+  `variant_of_the_day`, and four sets of picture URLs, each with `hero`,
+  `closeup`, `quiet` and `today`: `images` (TRMNL X landscape, 1836x1368,
+  16 grays), `images_portrait` (1368x1836), `images_og` (TRMNL OG landscape,
+  780x460, 1-bit) and `images_og_portrait` (460x780); `targets` spells the
+  sizes out
+- `today.png`, `today_portrait.png`, `today_og.png`, `today_og_portrait.png`:
+  the day's picture for each panel and orientation
+- `hero*.png`, `closeup*.png`, `quiet*.png`: all three framings, same suffixes
 
 ## Setup
 
@@ -63,19 +79,26 @@ Manual runs take an optional `date` and `species` id.
 
 ### TRMNL
 
+The plugin is meant to be installed as a recipe from the TRMNL catalog. To run
+your own copy from a fork:
+
 1. **Plugins**, **Private Plugin**, **Add new**, name it `Bird of the Day`.
-2. Strategy **Polling**, URL `https://<user>.github.io/<repo>/today.json`, `GET`.
-3. Refresh once a day.
-4. **Edit Markup**, **Full** tab: paste `trmnl/full.liquid`. **Form Builder**: add the
-   `framing` select from `trmnl/settings.yml`. Or upload both files as one zip to
-   `POST /api/plugin_settings/<id>/archive` (account API key), which sets markup and
-   field in one go. Save.
-5. **Force Refresh**, check the preview (TRMNL X), add to a playlist.
+2. Strategy **Polling**, URL `https://<user>.github.io/<repo>/today.json`, `GET`,
+   refresh every 6 hours.
+3. Zip the contents of `trmnl/` (settings.yml and the four layouts) and upload it to
+   `POST /api/plugin_settings/<id>/archive` with your account API key; that sets the
+   layouts and both form fields in one go. Or paste the layouts in **Edit Markup**
+   and build the fields from `trmnl/settings.yml` in the **Form Builder**.
+4. **Force Refresh**, check the previews, add to a playlist.
 
 **Framing** on the plugin's settings page picks the picture: daily rotation
 (default), hero, close-up or quiet. The markup reads
 `trmnl.plugin_settings.custom_fields_values.framing` and takes the matching URL
 from `images`; unset or unknown falls back to `image_url`, the day's picture.
+The full layout holds four `<img>` tags and shows one: the framework's `lg:`
+classes tell a TRMNL X from an OG, `portrait:` tells the orientation, so each
+panel gets a picture composed for exactly its view and shown 1:1. Half and
+quadrant layouts show the quiet picture fitted into the cell.
 
 ## Local preview
 
