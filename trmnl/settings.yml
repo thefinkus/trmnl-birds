@@ -1,0 +1,20 @@
+---
+name: Bird of the Day
+description: One bird a day, as big as it fits
+strategy: polling
+polling_verb: get
+polling_url: https://thefinkus.github.io/trmnl-birds/today.json
+refresh_interval: 1440
+dark_mode: 'no'
+no_screen_padding: 'no'
+custom_fields:
+  - keyname: framing
+    name: Framing
+    field_type: select
+    description: Which picture of the day's bird you see. All three are made every night.
+    options:
+      - 'Daily rotation: hero, close-up and quiet take turns': today
+      - 'Hero: the whole bird, name in big caps, Latin name and facts': hero
+      - 'Close-up: head and shoulders, bill always in frame': closeup
+      - 'Quiet: the bird alone, one small line with both names': quiet
+    default: today

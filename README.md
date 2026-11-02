@@ -14,7 +14,8 @@ GitHub Action (daily, ~03:00 Europe/Berlin, and on every push to main)
   scripts/build.py   pick the bird, write today.json
   scripts/art.py     compose hero/closeup/quiet.png, copy the day's to today.png
   deploy site/ to GitHub Pages, then ask TRMNL to refresh
-TRMNL private plugin, Polling on today.json, markup trmnl/full.liquid
+TRMNL private plugin, Polling on today.json, trmnl/settings.yml + full.liquid;
+  the Framing field picks today / hero / closeup / quiet
 ```
 
 **Pick:** species with `sticker.meetsQualityBar == true` (7,668). `REGION=PAL`
@@ -65,8 +66,16 @@ Manual runs take an optional `date` and `species` id.
 1. **Plugins**, **Private Plugin**, **Add new**, name it `Bird of the Day`.
 2. Strategy **Polling**, URL `https://<user>.github.io/<repo>/today.json`, `GET`.
 3. Refresh once a day.
-4. **Edit Markup**, **Full** tab: paste `trmnl/full.liquid`. Save.
+4. **Edit Markup**, **Full** tab: paste `trmnl/full.liquid`. **Form Builder**: add the
+   `framing` select from `trmnl/settings.yml`. Or upload both files as one zip to
+   `POST /api/plugin_settings/<id>/archive` (account API key), which sets markup and
+   field in one go. Save.
 5. **Force Refresh**, check the preview (TRMNL X), add to a playlist.
+
+**Framing** on the plugin's settings page picks the picture: daily rotation
+(default), hero, close-up or quiet. The markup reads
+`trmnl.plugin_settings.custom_fields_values.framing` and takes the matching URL
+from `images`; unset or unknown falls back to `image_url`, the day's picture.
 
 ## Local preview
 

@@ -1,7 +1,11 @@
 {% comment %}
-  Bird of the Day. The picture is composed server-side at the exact size of
-  the TRMNL X full view (1836x1368, 16 grays), so the markup only places it.
+  Bird of the Day. The pictures are composed server-side at the exact size of
+  the TRMNL X full view (1836x1368, 16 grays), so the markup only places one.
+  today.json carries the day's framing as image_url and all three under
+  images.*; the Framing field picks one, "today" follows the daily rotation.
 {% endcomment %}
+{%- assign framing = trmnl.plugin_settings.custom_fields_values.framing | default: "today" -%}
+{%- assign src = images[framing] | default: image_url -%}
 <div class="layout p--0">
-  <img class="image w--full h--full" src="{{ image_url }}" alt="{{ name }}">
+  <img class="image w--full h--full" src="{{ src }}" alt="{{ name }}">
 </div>
