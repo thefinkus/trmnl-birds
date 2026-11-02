@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Bird of the Day: pick today's species and render the picture for TRMNL X.
+"""Bird of the Day: pick today's species and render its pictures for TRMNL X.
 
-  python scripts/build.py --source SRC --out site [--date YYYY-MM-DD] [--region PAL] [--id Genus_species]
+  python scripts/build.py --source SRC --out site [--date YYYY-MM-DD] [--region PAL] [--id Genus_species] [--variant hero]
   python scripts/build.py --source SRC --print-stickers   # the sticker path the build needs
 
 SRC is a (sparse) checkout of github.com/alchaincyf/huashu-bird-sticker.
@@ -13,6 +13,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -21,6 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SEED = "trmnl-bird-of-the-day"
 TZ = ZoneInfo("Europe/Berlin")
 EPOCH = dt.date(2026, 1, 1)
+
+# One picture a day, stepping through these framings; VARIANT_EPOCH shows the first.
+VARIANTS = ["hero", "closeup", "quiet"]
+VARIANT_EPOCH = dt.date(2026, 11, 2)
 
 REGIONS = {
     "PAL": "Palearctic", "NA": "North America", "MA": "Middle America", "SA": "South America",
@@ -114,6 +119,7 @@ def info_for(s) -> dict:
         "migration": migration,
         "region": region,
         "region_codes": codes,
+        "lifestyle": traits.get("primaryLifestyle") or "",
         "iucn_code": iucn if iucn in IUCN else "",
         "iucn": IUCN.get(iucn, ""),
         "facts": facts,
@@ -128,6 +134,7 @@ def main(argv=None) -> int:
     ap.add_argument("--region", default=os.environ.get("REGION", "ALL"))
     ap.add_argument("--base-url", default=os.environ.get("PAGES_URL", ""))
     ap.add_argument("--id", help="force a species (for tests)")
+    ap.add_argument("--variant", choices=VARIANTS, help="force today's picture (default: daily rotation)")
     ap.add_argument("--print-stickers", action="store_true")
     a = ap.parse_args(argv)
 
@@ -150,22 +157,35 @@ def main(argv=None) -> int:
     info = info_for(s)
     st = art.load_sticker(a.source / s["sticker"]["file"])
     a.out.mkdir(parents=True, exist_ok=True)
-    art.finish(art.hero(st, info), a.out / "today.png")
     base = a.base_url.rstrip("/")
-    image_url = f"{base + '/' if base else ''}today.png?v={day.isoformat()}"
+
+    def url(name: str) -> str:
+        return f"{base + '/' if base else ''}{name}.png?v={day.isoformat()}"
+
+    renders = {"hero": art.hero, "closeup": art.closeup, "quiet": art.quiet}
+    vod = a.variant or VARIANTS[(day - VARIANT_EPOCH).days % len(VARIANTS)]
+    images = {}
+    for name in VARIANTS:
+        art.finish(renders[name](st, info), a.out / f"{name}.png")
+        images[name] = url(name)
+    shutil.copyfile(a.out / f"{vod}.png", a.out / "today.png")
+    images["today"] = url("today")
+    image_url = url("today")
 
     rec = dict(info)
     rec.update({
         "date": day.isoformat(),
         "date_label": f"{day.strftime('%A')}, {day.day} {day.strftime('%B %Y')}",
         "image_url": image_url,
+        "images": images,
+        "variant_of_the_day": vod,
         "pool": {"region": a.region or "ALL", "size": len(pool), "index": idx},
         "source": {"taxonomy": data.get("taxonomy"), "version": data.get("version"),
                    "ref": os.environ.get("SOURCE_REF", "")},
         "credit": "Stickers: huashu-bird-sticker (PolyForm Shield 1.0.0). Data: IOC 15.2, AVONET, Wikidata.",
     })
     (a.out / "today.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"{day} {a.region or 'ALL'} #{idx}/{len(pool)}: {info['name']} ({info['scientific']})")
+    print(f"{day} {a.region or 'ALL'} #{idx}/{len(pool)}: {info['name']} ({info['scientific']}) -> {vod}")
     return 0
 
 

@@ -1,7 +1,8 @@
-"""The Bird of the Day picture.
+"""The Bird of the Day pictures.
 
-`hero()` returns a grayscale canvas of exactly CANVAS (the drawable area of a
-TRMNL X full view, displayed 1:1). `finish()` quantizes it to 16 grays.
+`hero()`, `closeup()` and `quiet()` each return a grayscale canvas of exactly
+CANVAS (the drawable area of a TRMNL X full view, displayed 1:1). `finish()`
+quantizes it to 16 grays.
 
 Flat areas use exact 16-level grays (multiples of 17) so they stay clean after
 dithering; only the bird artwork and soft edges get dithered.
@@ -111,6 +112,32 @@ def sharpen(im: Image.Image) -> Image.Image:
     return out
 
 
+def fit_font(d, s, name, max_w, start, minimum=10, weight=None):
+    """Largest size (stepping down by 2) at which `s` fits in max_w."""
+    size = start
+    while size > minimum:
+        f = font(name, size, weight)
+        if text_w(d, s, f) <= max_w:
+            return f
+        size -= 2
+    return font(name, minimum, weight)
+
+
+def alpha_points(im: Image.Image, thresh=120):
+    a = np.asarray(im.getchannel("A")) > thresh
+    ys, xs = np.nonzero(a)
+    return xs, ys
+
+
+def _paste_clip(canvas: Image.Image, im: Image.Image, x: int, y: int):
+    """alpha_composite that tolerates images hanging off the canvas."""
+    l, t = max(0, -x), max(0, -y)
+    r, b = min(im.width, canvas.width - x), min(im.height, canvas.height - y)
+    if r <= l or b <= t:
+        return
+    canvas.alpha_composite(im.crop((l, t, r, b)), (x + l, y + t))
+
+
 def new_canvas(level=WHITE) -> Image.Image:
     return Image.new("RGBA", CANVAS, (level, level, level, 255))
 
@@ -151,6 +178,88 @@ def _biggest_type(d, words, max_w, max_h, start=700, min_lines=1, max_lines=4, l
             if best is None or size > best[0]:
                 best = (size, lines)
     return best
+
+
+# ---------------------------------------------------------------- small print
+
+LATIN_PX, FACTS_PX, GAP_FACTS = 50, 28, 26
+
+
+def _gap_name(size: int) -> int:
+    """Air between the name block and the small print under (or above) it."""
+    return max(40, int(size * 0.14))
+
+
+def _name_block_bounds(lines, size, corner, rect):
+    """Top and bottom of the glyphs as _draw_block paints them."""
+    f = font("sans", size, 900)
+    lead = size * 0.86
+    x0, y0, x1, y1 = rect
+    y = y0 if corner[0] == "t" else y1 - lead * len(lines)
+    bb = f.getbbox(lines[-1])
+    return y + size * 0.04, y + lead * (len(lines) - 1) + size * 0.04 + (bb[3] - bb[1])
+
+
+def _box_free(occ: np.ndarray, box, cell=24) -> bool:
+    """True when no occupied grid cell touches the pixel box (x0, y0, x1, y1)."""
+    x0, y0, x1, y1 = box
+    gy0, gy1 = max(0, y0 // cell), min(occ.shape[0], y1 // cell + 1)
+    gx0, gx1 = max(0, x0 // cell), min(occ.shape[1], x1 // cell + 1)
+    return not occ[gy0:gy1, gx0:gx1].any()
+
+
+def _put(d, s, f, x_anchor, y_top, fill, right):
+    """Draw `s` with its glyph box starting at y_top; right-aligned to x_anchor if asked."""
+    bb = f.getbbox(s)
+    x = x_anchor - (bb[2] - bb[0]) if right else x_anchor
+    d.text((x - bb[0], y_top - bb[1]), s, font=f, fill=fill)
+    return bb[3] - bb[1]
+
+
+def small_print(d, lines, size, corner, rect, latin, facts, bird, xy, under=False):
+    """Latin name and facts in small type. In a free corner the name does not
+    use, else right under (or above) the name, with real gaps between the
+    name, the Latin name and the facts; there the facts are trimmed one by
+    one until the block clears the bird. `under` skips the corner search."""
+    W, H = CANVAS
+    fi, fm = font("serif-italic", LATIN_PX), font("mono", FACTS_PX)
+    occ = _occupancy(bird, xy)
+
+    def rows_for(n):
+        rows = [(latin, fi)] + ([("  /  ".join(facts[:n]), fm)] if n else [])
+        heights = [f.getbbox(t)[3] - f.getbbox(t)[1] for t, f in rows]
+        return rows, heights, sum(heights) + GAP_FACTS * (len(rows) - 1), max(text_w(d, t, f) for t, f in rows) + 10
+
+    rows, heights, block_h, need_w = rows_for(len(facts))
+    pick, free = None, {}
+    if not under:
+        free = {c: r for c, r in reversed(_free_rects(occ, 24, W, H, 48))}  # tallest per corner
+        for c in ("tl", "tr", "bl", "br"):
+            if c == corner or c not in free:
+                continue
+            x0, y0, x1, y1 = free[c]
+            if x1 - x0 >= need_w and y1 - y0 >= block_h + 20:
+                pick = c
+                break
+    if pick:
+        x0, y0, x1, y1 = free[pick]
+        right = pick[1] == "r"
+        xa = x1 if right else x0
+        y = y0 if pick[0] == "t" else y1 - block_h
+    else:
+        x0, y0, x1, y1 = rect
+        right = corner[1] == "r"
+        xa = x1 if right else x0
+        top, bottom = _name_block_bounds(lines, size, corner, rect)
+        for n in range(len(facts), -1, -1):
+            rows, heights, block_h, need_w = rows_for(n)
+            y = bottom + _gap_name(size) if corner[0] == "t" else top - _gap_name(size) - block_h
+            box = (xa - need_w, int(y), xa, int(y + block_h)) if right else (xa, int(y), xa + need_w, int(y + block_h))
+            if _box_free(occ, box):
+                break
+    for (t, f), h in zip(rows, heights):
+        _put(d, t, f, xa, y, col(DARK), right)
+        y += h + GAP_FACTS
 
 
 # ---------------------------------------------------------------- bird first
@@ -251,34 +360,105 @@ def hero(st: Sticker, info: dict) -> Image.Image:
     cv.alpha_composite(sharpen(bird), xy)
     d = ImageDraw.Draw(cv)
     _draw_block(d, lines, size, corner, rect, col(BLACK))
-    # small print: a free corner other than the name's, else under the name
-    fm = font("mono", 26)
-    fi = font("serif-italic", 48)
-    small = [info["scientific"], "  /  ".join(info["facts"][:4])]
-    need_w = max(text_w(d, small[0], fi), text_w(d, small[1], fm)) + 10
-    occ = _occupancy(bird, xy)
-    free = {c: r for c, r in reversed(_free_rects(occ, 24, W, H, 48))}  # tallest per corner
-    pick = None
-    for c in ("tl", "tr", "bl", "br"):
-        if c == corner or c not in free:
-            continue
-        x0, y0, x1, y1 = free[c]
-        if x1 - x0 >= need_w and y1 - y0 >= 110:
-            pick = c
-            break
-    if pick:
-        x0, y0, x1, y1 = free[pick]
-        sx = x0 if pick[1] == "l" else x1
-        sy = y0 if pick[0] == "t" else y1 - 110
+    small_print(d, lines, size, corner, rect, info["scientific"], info["facts"][:4], bird, xy)
+    return cv
+
+
+# ---------------------------------------------------------------- closeup
+
+def _head(st: Sticker):
+    """(hx, hy, cx): the head, taken as the topmost band of the silhouette.
+    Right for perched and standing birds, which is nearly all of the
+    stickers; a bird in flight with a raised wing gets the wingtip instead."""
+    xs, ys = alpha_points(st.im)
+    top = ys.min()
+    band = xs[ys < top + max(3, st.h * 0.08)]
+    return float(np.median(band)), float(top), float(np.median(xs))
+
+
+def closeup(st: Sticker, info: dict) -> Image.Image:
+    """Head and shoulders, larger than the screen. Name small, in a corner."""
+    W, H = CANVAS
+    base = min(W / st.w, H / st.h)
+    xs, ys = alpha_points(st.im)
+    margin = 30
+    if info.get("lifestyle") == "Aerial":
+        # swifts, raptors, hummingbirds: often drawn in flight, so the top of the
+        # silhouette is a wingtip. Frame the body instead, a little less tight.
+        k = base * 1.4
+        bx, by = float(np.median(xs)), float(np.median(ys))
+        x, y = int(W * 0.5 - bx * k), int(H * 0.52 - by * k)
     else:
-        x0, y0, x1, y1 = rect
-        sx = x0 if corner[1] == "l" else x1
-        sy = (y1 - size * 0.86 * len(lines) - 120) if corner[0] == "b" else (y0 + size * 0.86 * len(lines) + 10)
-        pick = corner
-    for i, s_ in enumerate(small):
-        ff = fi if i == 0 else fm
-        tw = text_w(d, s_, ff)
-        d.text((sx if pick[1] == "l" else sx - tw, sy + i * 54), s_, font=ff, fill=col(DARK))
+        k = base * 1.75
+        hx, hy, cx = _head(st)
+        # the head rows (top 30% of the silhouette, bill included) must fit on screen
+        head_rows = ys < ys.min() + st.h * 0.30
+        hx0, hx1 = float(xs[head_rows].min()), float(xs[head_rows].max())
+        k = max(base * 1.15, min(k, (W - 2 * margin) / max(1.0, hx1 - hx0)))
+        # head towards the emptier side, a third down the screen
+        px = W * (0.60 if hx > cx else 0.40)
+        py = H * 0.30
+        x, y = int(px - hx * k), int(py - hy * k)
+        x = min(x, int(margin - hx0 * k))          # bill/left edge of the head inside
+        x = max(x, int(W - margin - hx1 * k))      # right edge of the head inside
+    bird = sharpen(scaled(st, k))
+    cv = new_canvas(WHITE)
+    _paste_clip(cv, bird, x, y)
+    d = ImageDraw.Draw(cv)
+    occ = _occupancy(bird, (x, y))
+    words = info["name"].upper().replace("-", "- ").split()
+    r = _fit_name_in(d, words, _free_rects(occ, 24, W, H, 48), min_size=40)
+    if r:
+        size, lines, corner, rect = r
+        size = min(size, 170)
+        _draw_block(d, lines, size, corner, rect, col(BLACK))
+        small_print(d, lines, size, corner, rect, info["scientific"], [], bird, (x, y), under=True)
+    else:
+        plate = Image.new("RGBA", (W - 96, 120), (WHITE, WHITE, WHITE, 230))
+        cv.alpha_composite(plate, (48, H - 48 - 120))
+        d.text((64, H - 48 - 110), info["name"].upper(),
+               font=fit_font(d, info["name"].upper(), "sans", W - 140, 80, weight=900), fill=col(BLACK))
+    return cv
+
+
+# ---------------------------------------------------------------- quiet
+
+def quiet(st: Sticker, info: dict) -> Image.Image:
+    """The bird as big as it gets; one small line with both names, nothing else."""
+    W, H = CANVAS
+    M = 48
+    fn, fl = font("sans", 60, 500), font("serif-italic", 50)
+    d0 = ImageDraw.Draw(Image.new("L", (1, 1)))
+    name_w = text_w(d0, info["name"], fn)
+    cap_w, cap_h = name_w + 30 + text_w(d0, info["scientific"], fl), 72
+    choice = None
+    for frac in (0.94, 0.86, 0.78):
+        bird = fit(st, W * 0.96, H * frac)
+        for ax in (1.0, 0.5, 0.0):  # right, centre, left
+            x = int(ax * (W - 80 - bird.width)) + 40
+            y = H - 40 - bird.height
+            occ = _occupancy(bird, (x, y))
+            for cy in (H - M - cap_h, M):  # caption bottom left, else top left
+                cx = M if ax > 0 else W - M - cap_w
+                if _box_free(occ, (cx - 16, cy - 10, cx + cap_w + 16, cy + cap_h + 10)):
+                    choice = (bird, (x, y), cx, cy, False)
+                    break
+            if choice:
+                break
+        if choice:
+            break
+    if not choice:
+        bird = fit(st, W * 0.96, H * 0.94)
+        choice = (bird, (W - 40 - bird.width, H - 40 - bird.height), M, H - M - cap_h, True)
+    bird, xy, cx, cy, plate = choice
+    cv = new_canvas(WHITE)
+    cv.alpha_composite(sharpen(bird), xy)
+    if plate:
+        pl = Image.new("RGBA", (cap_w + 32, cap_h + 20), (WHITE, WHITE, WHITE, 230))
+        cv.alpha_composite(pl, (cx - 16, cy - 10))
+    d = ImageDraw.Draw(cv)
+    _put(d, info["name"], fn, cx, cy, col(BLACK), False)
+    _put(d, info["scientific"], fl, cx + name_w + 30, cy + 12, col(MID), False)
     return cv
 
 

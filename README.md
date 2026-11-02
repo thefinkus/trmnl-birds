@@ -1,16 +1,18 @@
 # Bird of the Day for TRMNL X
 
-One bird a day on a TRMNL X (1872x1404, 16 grays). The bird as big as it
-fits, its English name in the largest corner it leaves free, the Latin name
-and four facts in small print. Composed server-side at the exact pixel size
-of the TRMNL X full view, pre-dithered to 16 grays, shown 1:1.
+One bird a day on a TRMNL X (1872x1404, 16 grays), in one of three framings
+that rotate day by day: `hero` (the whole bird as big as it fits, its name in
+the largest free corner, Latin name and four facts in small print), `closeup`
+(head and shoulders at 1.75x, the bill always in frame) and `quiet` (the bird
+alone, one small line with both names). Composed server-side at the exact
+pixel size of the TRMNL X full view, pre-dithered to 16 grays, shown 1:1.
 
 ```
 GitHub Action (daily, ~03:00 Europe/Berlin, and on every push to main)
   sparse + blobless fetch of huashu-bird-sticker @ pinned commit:
     data/species.json, then only today's sticker
   scripts/build.py   pick the bird, write today.json
-  scripts/art.py     compose today.png, quantize to 16 grays
+  scripts/art.py     compose hero/closeup/quiet.png, copy the day's to today.png
   deploy site/ to GitHub Pages, then ask TRMNL to refresh
 TRMNL private plugin, Polling on today.json, markup trmnl/full.liquid
 ```
@@ -25,13 +27,23 @@ every species once before any repeat. The source repo is pinned
 **Layout:** the bird is scaled to fill the view; a coarse occupancy grid finds
 the biggest empty corner, and the name is set there in Inter Black at the
 largest size that fits (up to three lines). The small print goes to another
-free corner.
+free corner, else under the name with a gap of a seventh of the name size.
+The closeup caps the name at 170 px and keeps the Latin name under it. Aerial
+species (AVONET `primaryLifestyle`), often drawn in flight, get a body crop at
+1.4x instead of the head crop. The quiet caption sits bottom left, or top left
+when the bird reaches into that corner; the bird shrinks a step if neither is
+free.
+
+**Rotation:** `VARIANTS` in `scripts/build.py`, one step per day from
+`VARIANT_EPOCH` (2026-11-02 shows `hero`). `--variant` forces one for a run.
 
 ## Published files
 
 - `https://<user>.github.io/<repo>/today.json`: name, Latin name, family,
-  mass, wing, habitat, migration, range, IUCN status, `image_url`
-- `https://<user>.github.io/<repo>/today.png`: 1836x1368, 16 grays
+  mass, wing, habitat, migration, range, IUCN status, `image_url`,
+  `variant_of_the_day`, `images.{hero, closeup, quiet, today}`
+- `https://<user>.github.io/<repo>/today.png`: the day's picture, 1836x1368, 16 grays
+- `hero.png`, `closeup.png`, `quiet.png`: all three framings of the day's bird
 
 ## Setup
 
