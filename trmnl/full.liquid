@@ -12,8 +12,8 @@
 {%- assign og_port = images_og_portrait[framing] | default: og_land -%}
 <div class="layout p--0">
   <div class="w--full h--full hidden lg:flex">
-    <img class="image image--contain w--full h--full portrait:hidden" src="{{ x_land }}" alt="{{ name }}">
-    <img class="image image--contain w--full h--full hidden portrait:block" src="{{ x_port }}" alt="{{ name }}">
+    <img class="image image-dither image--contain w--full h--full portrait:hidden" src="{{ x_land }}" alt="{{ name }}">
+    <img class="image image-dither image--contain w--full h--full hidden portrait:block" src="{{ x_port }}" alt="{{ name }}">
   </div>
   <div class="w--full h--full lg:hidden">
     <img class="image image-dither image--contain w--full h--full portrait:hidden" src="{{ og_land }}" alt="{{ name }}">
