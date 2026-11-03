@@ -5,7 +5,8 @@ on:
     # GitHub cron runs in UTC: 01:17 UTC is 02:17 in winter and 03:17 in summer
     # in Europe/Berlin. The script always picks the Berlin calendar date.
     # Three slots because GitHub ran the single 01:17 slot about 6.5 h late on
-    # 2026-11-02 and 2026-11-03; a repeat run builds the same bird and changes nothing.
+    # 2026-11-02 and 2026-11-03. The check job below stops a later slot when an
+    # earlier one already published today's bird.
     - cron: "17 1 * * *"
     - cron: "17 3 * * *"
     - cron: "17 5 * * *"
@@ -44,7 +45,34 @@ env:
   SOURCE_REF: 2be05e3e614b6e36332eab047ee67d07bf220180
 
 jobs:
+  # A scheduled run first asks Pages which date it serves. If that is already
+  # today in Europe/Berlin, an earlier slot did the work and this run stops here,
+  # so build, deploy and refresh are skipped. Pushes and manual runs always build.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - id: check
+        env:
+          PAGES_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"; echo "${{ github.event_name }} run, building"; exit 0
+          fi
+          today=$(TZ=Europe/Berlin date +%F)
+          live=$(curl -fsS -H "Cache-Control: no-cache" "$PAGES_URL/today.json?t=$(date +%s)" | jq -r .date || true)
+          if [ "$live" = "$today" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Pages already serves $today, nothing to do" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Pages serves ${live:-nothing}, building $today"
+          fi
+
   build:
+    needs: check
+    if: ${{ needs.check.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     outputs:
       date: ${{ steps.build.outputs.date }}
