@@ -78,8 +78,8 @@ sides, which matters in the narrow portrait views.
 4. Push to `main`, or Actions, **Bird of the Day**, **Run workflow**.
 
 The schedule has three slots, `17 1`, `17 3` and `17 5` UTC (02:17, 04:17 and 06:17 in
-Berlin winter time), because GitHub sometimes starts a scheduled run hours late; a repeat
-run builds the same bird. Manual runs take an optional `date` and `species` id.
+Berlin winter time), because GitHub sometimes starts a scheduled run hours late; a later
+slot checks Pages first and stops when today's bird is already live. Manual runs take an optional `date` and `species` id.
 
 ### TRMNL
 
