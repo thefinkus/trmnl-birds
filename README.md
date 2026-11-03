@@ -9,13 +9,13 @@ alone, one small line with both names). Composed server-side at the exact
 pixel size of each panel's full view, pre-dithered to the panel's grays, shown 1:1.
 
 ```
-GitHub Action (daily, ~03:00 Europe/Berlin, and on every push to main)
+GitHub Action (nightly, three slots from 02:17 Europe/Berlin, and on every push to main)
   sparse + blobless fetch of huashu-bird-sticker @ pinned commit:
     data/species.json, then only today's sticker
   scripts/build.py   pick the bird, write today.json
   scripts/art.py     compose hero, closeup and quiet for TRMNL X and OG, landscape
                      and portrait (12 PNGs), copy the day's framing to today*.png
-  deploy site/ to GitHub Pages, then ask TRMNL to refresh
+  deploy site/ to GitHub Pages, then make TRMNL poll and render
 TRMNL plugin (recipe), Polling on today.json, trmnl/settings.yml + four layouts;
   the markup shows the picture for the panel and orientation it runs on,
   the Framing field picks today / hero / closeup / quiet
@@ -68,14 +68,18 @@ sides, which matters in the narrow portrait views.
 
 1. Settings, Pages, Source: **GitHub Actions**.
 2. Optional: repository variable `REGION` = `PAL`.
-3. Optional, so the panel updates right after the nightly build instead of
-   on TRMNL's own 24 h cycle: variable `TRMNL_PLUGIN_SETTING_ID` (the id in
-   the private plugin's URL on trmnl.com) and secret `TRMNL_API_KEY`
-   (trmnl.com, Account, API key).
+3. Optional, so your own instance shows the new bird right after the nightly
+   build instead of at its next 6-hour poll: variable `TRMNL_PLUGIN_SETTING_ID`
+   (the id in the private plugin's URL on trmnl.com) and secret `TRMNL_API_KEY`
+   (trmnl.com, Account, API key). The `refresh` job then changes the instance's
+   refresh interval for a moment, which makes TRMNL poll `today.json` and render
+   at once, and puts the interval back. (TRMNL's `POST .../refreshes` only
+   refetches the data, it does not render.)
 4. Push to `main`, or Actions, **Bird of the Day**, **Run workflow**.
 
-The schedule is `17 1 * * *` UTC (02:17 winter, 03:17 summer in Berlin).
-Manual runs take an optional `date` and `species` id.
+The schedule has three slots, `17 1`, `17 3` and `17 5` UTC (02:17, 04:17 and 06:17 in
+Berlin winter time), because GitHub sometimes starts a scheduled run hours late; a repeat
+run builds the same bird. Manual runs take an optional `date` and `species` id.
 
 ### TRMNL
 
