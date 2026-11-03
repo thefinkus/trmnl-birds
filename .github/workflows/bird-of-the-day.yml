@@ -4,7 +4,11 @@ on:
   schedule:
     # GitHub cron runs in UTC: 01:17 UTC is 02:17 in winter and 03:17 in summer
     # in Europe/Berlin. The script always picks the Berlin calendar date.
+    # Three slots because GitHub ran the single 01:17 slot about 6.5 h late on
+    # 2026-11-02 and 2026-11-03; a repeat run builds the same bird and changes nothing.
     - cron: "17 1 * * *"
+    - cron: "17 3 * * *"
+    - cron: "17 5 * * *"
   push:
     branches: [main]
     paths-ignore: ["preview/**", "README.md", "LICENSE"]
@@ -17,7 +21,7 @@ on:
         description: "Force a species id, e.g. Upupa_epops (for tests)"
         required: false
       refresh_trmnl:
-        description: "Tell TRMNL to fetch the result right away"
+        description: "Make TRMNL poll and render the result right away"
         type: boolean
         default: true
 
@@ -108,12 +112,16 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@v4
 
-  # TRMNL polls on a fixed interval (24 h for this plugin) with no time of day,
-  # so the panel would show yesterday's bird for most of the day. This job asks
-  # TRMNL to fetch today.json as soon as it is live. It needs two things on the
-  # repository: the variable TRMNL_PLUGIN_SETTING_ID (the private plugin's id
-  # from its URL on trmnl.com) and the secret TRMNL_API_KEY (Account, API key).
-  # Without the variable the job is skipped; without the secret it exits early.
+  # TRMNL polls on its own clock, every refresh_interval minutes, and renders a new
+  # screen only when that poll finds data that differ from the last render. The API's
+  # POST .../refreshes only refetches the variables: it neither renders nor moves the
+  # clock (seen 2026-11-03: the panel kept yesterday's bird until the next poll slot).
+  # What does start a poll-and-render at once is changing the refresh interval. So this
+  # job waits until Pages serves today's today.json, sets the interval to 5 minutes,
+  # waits for TRMNL to log the poll, and puts the interval back. It needs two things on
+  # the repository: the variable TRMNL_PLUGIN_SETTING_ID (the private plugin's id from
+  # its URL on trmnl.com) and the secret TRMNL_API_KEY (Account, API key). Without the
+  # variable the job is skipped; without the secret it exits early.
   refresh:
     needs: [build, deploy]
     if: ${{ vars.TRMNL_PLUGIN_SETTING_ID != '' && (github.event_name != 'workflow_dispatch' || inputs.refresh_trmnl) }}
@@ -130,27 +138,63 @@ jobs:
             if [ "$got" = "$EXPECT" ]; then echo "live: $got"; exit 0; fi
             echo "live: ${got:-none}, want $EXPECT, retry $i"; sleep 10
           done
-          echo "::warning::today.json still shows ${got:-nothing} after 5 min, refreshing anyway"
+          echo "::warning::today.json still shows ${got:-nothing} after 5 min, poking TRMNL anyway"
 
-      - name: Ask TRMNL to fetch it now
+      - name: Make TRMNL poll and render now
+        id: poke
         env:
           KEY: ${{ secrets.TRMNL_API_KEY }}
           ID: ${{ vars.TRMNL_PLUGIN_SETTING_ID }}
+          EXPECT: ${{ needs.build.outputs.date }}
         run: |
           if [ -z "$KEY" ]; then
-            echo "::notice::Secret TRMNL_API_KEY is not set, TRMNL keeps its own 24 h schedule"
+            echo "::notice::Secret TRMNL_API_KEY is not set, TRMNL keeps its own schedule"
             exit 0
           fi
-          api="https://trmnl.com/api/plugin_settings/$ID/refreshes"
-          job=$(curl -fsS -X POST -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{}' "$api" | jq -r .data.job_id)
-          echo "refresh job $job"
-          st=pending; res=""
-          for i in $(seq 1 20); do
-            sleep 3
-            res=$(curl -fsS -H "Authorization: Bearer $KEY" "$api/$job")
-            st=$(echo "$res" | jq -r .data.status)
-            case "$st" in pending|processing) ;; *) break ;; esac
+          api="https://trmnl.com/api/plugin_settings"
+          auth="Authorization: Bearer $KEY"
+          was=$(curl -fsS -H "$auth" "$api" \
+            | jq -r --argjson id "$ID" '.data[] | select(.id == $id) | .refresh_interval')
+          if [ -z "$was" ] || [ "$was" = "null" ]; then echo "::error::Plugin instance $ID not found"; exit 1; fi
+          echo "restore=$was" >> "$GITHUB_OUTPUT"
+          # Any change of the interval starts a poll cycle at once; the value must differ
+          # from the stored one, and it must differ again on a retry.
+          toggle=60; [ "$was" = "60" ] && toggle=120
+          for attempt in 1 2 3; do
+            since=$(date -u +%Y-%m-%dT%H:%M:%S)
+            curl -fsS -o /dev/null -X PATCH -H "$auth" -H "Content-Type: application/json" \
+              -d "{\"refresh_interval\": $toggle}" "$api/$ID"
+            echo "attempt $attempt: interval $was -> $toggle at ${since}Z, waiting for TRMNL's poll"
+            line=""
+            for i in $(seq 1 12); do
+              sleep 10
+              line=$(curl -fsS -H "$auth" "$api/$ID/logs" | jq -r --arg since "$since" '
+                [.data.logs[] | select((.dump[0].m | split(", ")[1]) > $since)] | first
+                | if . == null then "" else [.dump[].m | split(", ")[2:] | join(", ")] | join(" / ") end')
+              [ -n "$line" ] && break
+            done
+            echo "TRMNL: ${line:-no log entry within 120 s}"
+            got=$(curl -fsS -H "$auth" "$api/$ID/merge_variables" | jq -r '.data.variables.date // ""')
+            if [ "$got" = "$EXPECT" ]; then
+              case "$line" in
+                *"Screen refresh"*) msg="TRMNL fetched and rendered $EXPECT" ;;
+                *) msg="TRMNL already had $EXPECT, nothing to render" ;;
+              esac
+              echo "$msg"; echo "$msg" >> "$GITHUB_STEP_SUMMARY"; exit 0
+            fi
+            echo "TRMNL still holds ${got:-nothing}, want $EXPECT (its Pages edge may cache the old file for up to 10 min)"
+            toggle=$(( toggle == 60 ? 120 : 60 )); was=$toggle
+            [ "$attempt" -lt 3 ] && sleep 120
           done
-          echo "status: $st"
-          echo "$res" | jq -r '"TRMNL refreshed: " + (.data.variables.name // "?") + " (" + (.data.variables.date // "?") + ")"' >> "$GITHUB_STEP_SUMMARY"
-          [ "$st" = "complete" ] && [ "$(echo "$res" | jq -r .data.success)" = "true" ]
+          echo "::warning::TRMNL did not pick up $EXPECT in three attempts; its next poll will"
+
+      - name: Put the refresh interval back
+        if: ${{ always() && steps.poke.outputs.restore != '' }}
+        env:
+          KEY: ${{ secrets.TRMNL_API_KEY }}
+          ID: ${{ vars.TRMNL_PLUGIN_SETTING_ID }}
+          RESTORE: ${{ steps.poke.outputs.restore }}
+        run: |
+          curl -fsS -o /dev/null -X PATCH -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+            -d "{\"refresh_interval\": $RESTORE}" "https://trmnl.com/api/plugin_settings/$ID"
+          echo "interval back to $RESTORE"
