@@ -1,6 +1,6 @@
 ---
 name: Bird of the Day
-description: One bird a day, as big as it fits
+description: One bird a day, drawn as art
 strategy: polling
 polling_verb: get
 polling_url: https://thefinkus.github.io/trmnl-birds/today.json
@@ -11,7 +11,7 @@ custom_fields:
   - keyname: about
     name: About this plugin
     field_type: author_bio
-    category: art,images
+    category: nature,art
     description: >-
       One bird a day, drawn as a sticker, on your panel as big as it fits. Three framings take
       turns day by day: the whole bird with its name in big caps (hero), head and shoulders
