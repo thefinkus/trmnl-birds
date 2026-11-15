@@ -9,7 +9,9 @@ SRC is a (sparse) checkout of github.com/alchaincyf/huashu-bird-sticker.
 Every framing (hero, closeup, quiet) is rendered for four targets: TRMNL X
 landscape (`hero.png`), X portrait (`hero_portrait.png`), OG landscape
 (`hero_og.png`, 1-bit) and OG portrait (`hero_og_portrait.png`). The day's
-framing is copied to `today*.png`; today.json lists all of them under
+framing is copied to `today*.png`. A fourth picture, `calendar*.png`, shows
+the month so far (on the OG: this week), each past day with its bird; it is a
+Framing choice, not part of the rotation. today.json lists all of them under
 `images`, `images_portrait`, `images_og` and `images_og_portrait`.
 """
 from __future__ import annotations
@@ -84,6 +86,15 @@ def pick(pool, day: dt.date):
     return order[idx], idx
 
 
+def calendar_dates(day: dt.date):
+    """Mirror of art.calendar_days without the image imports (for --print-stickers)."""
+    first = day.replace(day=1)
+    nxt = (first + dt.timedelta(days=32)).replace(day=1)
+    month = [first + dt.timedelta(days=i) for i in range((nxt - first).days)]
+    monday = day - dt.timedelta(days=day.weekday())
+    return month, [monday + dt.timedelta(days=i) for i in range(7)]
+
+
 def fmt_mass(g) -> str:
     if g is None:
         return ""
@@ -153,8 +164,15 @@ def main(argv=None) -> int:
         return 2
     s, idx = (next(x for x in species if x["id"] == a.id), -1) if a.id else pick(pool, day)
 
+    # the calendar picture: every past day of this month and of this week
+    month, week = calendar_dates(day)
+    cal = {}
+    for c in sorted({c for c in month + week if c and c <= day}):
+        cal[c] = s if c == day else pick(pool, c)[0]
+
     if a.print_stickers:
-        print(s["sticker"]["file"])
+        for f in dict.fromkeys([s["sticker"]["file"]] + [x["sticker"]["file"] for x in cal.values()]):
+            print(f)
         return 0
 
     sys.path.insert(0, str(Path(__file__).parent))
@@ -169,6 +187,8 @@ def main(argv=None) -> int:
         return f"{base + '/' if base else ''}{name}.png?v={day.isoformat()}"
 
     renders = {"hero": art.hero, "closeup": art.closeup, "quiet": art.quiet}
+    cal_birds = {c: (art.load_sticker(a.source / x["sticker"]["file"]), info_for(x)["name"])
+                 for c, x in cal.items()}
     vod = a.variant or VARIANTS[(day - VARIANT_EPOCH).days % len(VARIANTS)]
     sets, targets = {}, {}
     for sp in art.SPECS:
@@ -177,6 +197,8 @@ def main(argv=None) -> int:
         for name in VARIANTS:
             art.finish(renders[name](st, info, sp), a.out / f"{name}{suffix}.png", levels=sp.levels)
             images[name] = url(f"{name}{suffix}")
+        art.finish(art.calendar(day, cal_birds, sp), a.out / f"calendar{suffix}.png", levels=sp.levels)
+        images["calendar"] = url(f"calendar{suffix}")
         shutil.copyfile(a.out / f"{vod}{suffix}.png", a.out / f"today{suffix}.png")
         images["today"] = url(f"today{suffix}")
         sets[f"images{suffix}"] = images
@@ -191,6 +213,7 @@ def main(argv=None) -> int:
         **sets,
         "targets": targets,
         "variant_of_the_day": vod,
+        "calendar": [{"date": c.isoformat(), "name": n, "id": cal[c]["id"]} for c, (_, n) in cal_birds.items()],
         "pool": {"region": a.region or "ALL", "size": len(pool), "index": idx},
         "source": {"taxonomy": data.get("taxonomy"), "version": data.get("version"),
                    "ref": os.environ.get("SOURCE_REF", "")},

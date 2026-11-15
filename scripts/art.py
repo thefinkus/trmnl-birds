@@ -617,3 +617,171 @@ def quiet(st: Sticker, info: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
     else:
         _put(d, info["scientific"], fl, cx + name_w + sp.px(30), cy + sp.px(12), col(sp.ink_latin), False)
     return cv
+
+
+# ---------------------------------------------------------------- calendar
+
+WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+
+
+def calendar_days(day) -> list:
+    """The dates a calendar picture shows, past ones with a bird. The X gets
+    the month as a Monday-first grid (None pads the first week); the 1-bit OG
+    is too small for 31 birds and gets the current week, Monday to Sunday."""
+    import datetime as _dt
+    first = day.replace(day=1)
+    nxt = (first + _dt.timedelta(days=32)).replace(day=1)
+    month = [None] * first.weekday() + [first + _dt.timedelta(days=i) for i in range((nxt - first).days)]
+    month += [None] * (-len(month) % 7)
+    monday = day - _dt.timedelta(days=day.weekday())
+    week = [monday + _dt.timedelta(days=i) for i in range(7)]
+    return month, week
+
+
+def _name_lines(d, name, max_w, size, minimum, weight):
+    """`name` on one line, shrinking down to `minimum`; else on two lines,
+    broken at a space if that fits, at a hyphen only when it must, and as
+    evenly as possible."""
+    for sz in range(size, max(minimum, size - 2) - 1, -1):  # a hair smaller is fine, more is not
+        f = font("sans", sz, weight)
+        if text_w(d, name, f) <= max_w:
+            return f, [name]
+    for at_space in (True, False):
+        words = name.split() if at_space else name.replace("-", "- ").split()
+        for sz in range(size, minimum - 1, -1):
+            f = font("sans", sz, weight)
+            best = None
+            for split in _splits(words, 2) if len(words) > 1 else []:
+                lines = [" ".join(p).replace("- ", "-") for p in split]
+                w = max(text_w(d, s_, f) for s_ in lines)
+                if w <= max_w and (best is None or w < best[0]):
+                    best = (w, lines)
+            if best:
+                return f, best[1]
+    return font("sans", minimum, weight), [name]
+
+
+def _day_mark(d, sp, x, y, label, today, past, size):
+    """Day number with its top-left at (x, y); today's sits in a black disc."""
+    f = font("sans", size, 700 if today else 500)
+    bb = f.getbbox(label)
+    if today:
+        # a disc for a day number, a pill when the label is wider ("Sun 15")
+        r = int(size * 0.95)
+        tw = bb[2] - bb[0]
+        half = max(r, tw / 2 + size * 0.45)
+        cx, cy = x + half - sp.px(6), y + (bb[3] - bb[1]) // 2
+        d.rounded_rectangle((cx - half, cy - r, cx + half, cy + r), radius=r, fill=col(BLACK))
+        d.text((cx - tw / 2 - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1]), label, font=f, fill=col(WHITE))
+        return
+    ink = BLACK if sp.levels == 2 else (DARK if past else LIGHT)
+    d.text((x - bb[0], y - bb[1]), label, font=f, fill=col(ink))
+
+
+def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
+    """The month so far: a calendar whose past days carry their bird, today
+    marked, future days empty. `birds` maps a date to (Sticker, name)."""
+    W, H = sp.size
+    M = sp.margin
+    month, week = calendar_days(day)
+    week_mode = sp.levels == 2
+    cells = week if week_mode else month
+    portrait = H > W
+    cv = new_canvas(sp)
+    d = ImageDraw.Draw(cv)
+
+    # title: the month in big caps, the count on the right
+    so_far = sum(1 for c in month if c and c <= day)
+    title = day.strftime("%B").upper()
+    tf = fit_font(d, title, "sans", (W - 2 * M) * (0.62 if not portrait else 0.9), sp.px(118), sp.px(60), weight=900)
+    tb = tf.getbbox(title)
+    d.text((M - tb[0], M - tb[1]), title, font=tf, fill=col(BLACK))
+    title_h = tb[3] - tb[1]
+    count = f"{so_far} {'bird' if so_far == 1 else 'birds'} so far"
+    lf = latin_font(sp)
+    if portrait:
+        y_count = M + title_h + sp.px(26)
+        _put(d, count, lf, M, y_count, col(sp.ink_latin), False)
+        top = y_count + (lf.getbbox(count)[3] - lf.getbbox(count)[1]) + sp.px(36)
+    else:
+        lb = lf.getbbox(count)
+        _put(d, count, lf, W - M, M + title_h - (lb[3] - lb[1]), col(sp.ink_latin), True)
+        top = M + title_h + sp.px(36)
+
+    side = week_mode and portrait  # OG portrait: the week as a list
+    cols = 1 if side else 7
+    rows = len(cells) // cols
+    gap = sp.px(14)
+    hf = font("sans", max(12, sp.px(22)), 600)
+    cw = (W - 2 * M - gap * (cols - 1)) / cols
+    head_h = 0 if side else hf.getbbox("MON")[3] + sp.px(12)
+    ch = (H - M - top - head_h - gap * (rows - 1)) / rows
+    if week_mode and not side and ch > cw * 1.5:
+        # one row on a wide panel: keep the cells near bird-shaped, centred
+        top += (ch - cw * 1.5) / 2
+        ch = cw * 1.5
+    if not side:  # weekday header
+        for i, wd in enumerate(WEEKDAYS):
+            _put(d, wd, hf, int(M + i * (cw + gap)), int(top), col(sp.ink_small if sp.levels > 2 else BLACK), False)
+        top += head_h
+
+    num_size = max(14, sp.px(28))
+    name_size, name_min = max(13, sp.px(24)), max(12, sp.px(18))
+    # every row reserves room for its longest name, so birds in a row share a baseline
+    row_lines = {}
+    if not side:
+        for i, c in enumerate(cells):
+            if c and c <= day and c in birds:
+                n = len(_name_lines(d, birds[c][1], cw - sp.px(4), name_size, name_min, 700)[1])
+                row_lines[i // cols] = max(row_lines.get(i // cols, 1), n)
+    for i, c in enumerate(cells):
+        if c is None:
+            continue
+        x0 = int(M + (i % cols) * (cw + gap))
+        y0 = int(top + (i // cols) * (ch + gap))
+        is_today, past = c == day, c <= day
+        label = f"{WEEKDAYS[c.weekday()].title()} {c.day}" if side else str(c.day)
+        _day_mark(d, sp, x0, y0, label, is_today, past, num_size)
+        if not past or c not in birds:
+            continue
+        st, name = birds[c]
+        weight = 700 if is_today else 500
+        ink = col(BLACK if is_today or sp.levels == 2 else DARK)
+        if side:
+            # number left, bird in the middle, name right
+            lab_w = text_w(d, "Wed 30", font("sans", num_size, 700)) + sp.px(36)
+            bw = int(cw * 0.32)
+            bird = sharpen(fit(st, bw, ch - sp.px(4)), sp)
+            cv.alpha_composite(bird, (x0 + lab_w + (bw - bird.width) // 2, int(y0 + ch - bird.height)))
+            nx = x0 + lab_w + bw + sp.px(16)
+            f, lines = _name_lines(d, name, x0 + cw - nx, name_size, name_min, weight)
+            lh = int(f.size * 1.18)
+            y = int(y0 + (ch - lh * len(lines)) / 2)
+            for ln in lines:
+                _put(d, ln, f, nx, y, ink, False)
+                y += lh
+            continue
+        f, lines = _name_lines(d, name, cw - sp.px(4), name_size, name_min, weight)
+        lh = int(f.size * 1.18)
+        name_h = lh * row_lines.get(i // cols, 1)
+        by0, by1 = y0 + sp.px(4), int(y0 + ch - name_h - sp.px(8))
+        # the bird gets the whole cell above its name; it only steps aside
+        # (right-aligned, then shrunk into the room beside the number) when
+        # it would touch the day number in the top-left corner
+        num_box = (x0, y0, x0 + text_w(d, str(c.day), font("sans", num_size, 700)) + sp.px(18), y0 + num_size + sp.px(10))
+        for mode in ("centre", "right", "beside"):
+            bx0 = num_box[2] if mode == "beside" else x0
+            bird = fit(st, x0 + cw - bx0 - sp.px(4), max(4, by1 - by0))
+            bx = int(bx0 + (x0 + cw - bx0 - bird.width) / 2) if mode == "centre" else int(x0 + cw - bird.width)
+            by = by1 - bird.height
+            ax0, ay0 = max(0, num_box[0] - bx), max(0, num_box[1] - by)
+            ax1, ay1 = min(bird.width, num_box[2] - bx), min(bird.height, num_box[3] - by)
+            if mode == "beside" or ax1 <= ax0 or ay1 <= ay0 or \
+                    not (np.asarray(bird.getchannel("A"))[ay0:ay1, ax0:ax1] > 40).any():
+                break
+        cv.alpha_composite(sharpen(bird, sp), (bx, by))
+        y = by1 + sp.px(8)
+        for ln in lines:
+            _put(d, ln, f, x0, y, ink, False)
+            y += lh
+    return cv

@@ -16,7 +16,7 @@ custom_fields:
       One bird a day, drawn as a sticker, on your panel as big as it fits. Three framings take
       turns day by day: the whole bird with its name in big caps (hero), head and shoulders
       (close-up), or the bird alone with one small line (quiet); pick one for good with the
-      Framing field. The pictures are composed every night for TRMNL X and OG, landscape and
+      Framing field, or Calendar for the month so far, one bird per day. The pictures are composed every night for TRMNL X and OG, landscape and
       portrait, and served as static files from GitHub Pages. No account, no key: add the
       plugin, choose a framing, done.<br/>Stickers:
       <a href="https://github.com/alchaincyf/huashu-bird-sticker">huashu-bird-sticker</a> by
@@ -27,10 +27,11 @@ custom_fields:
   - keyname: framing
     name: Framing
     field_type: select
-    description: Which picture of the day's bird you see. All three are made every night; half and quadrant layouts always show the quiet one.
+    description: Which picture of the day's bird you see. All four are made every night; half and quadrant layouts always show the quiet one.
     options:
       - 'Daily rotation: hero, close-up and quiet take turns': today
       - 'Hero: the whole bird, name in big caps, Latin name and facts': hero
       - 'Close-up: head and shoulders, bill always in frame': closeup
       - 'Quiet: the bird alone, one small line with both names': quiet
+      - 'Calendar: the month so far, one bird per day (OG: this week)': calendar
     default: today

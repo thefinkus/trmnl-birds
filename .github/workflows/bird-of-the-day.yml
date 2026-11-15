@@ -94,7 +94,7 @@ jobs:
           git fetch -q --depth 1 --filter=blob:none origin "$SOURCE_REF"
           git checkout -q FETCH_HEAD
 
-      - name: Fetch only today's sticker
+      - name: Fetch today's sticker and the month's so far (calendar)
         env:
           DATE: ${{ inputs.date }}
           SPECIES: ${{ inputs.species }}
@@ -102,7 +102,7 @@ jobs:
           ARGS=()
           [ -n "$DATE" ] && ARGS+=(--date "$DATE")
           [ -n "$SPECIES" ] && ARGS+=(--id "$SPECIES")
-          git -C src sparse-checkout add "/$(python scripts/build.py --source src "${ARGS[@]}" --print-stickers)"
+          python scripts/build.py --source src "${ARGS[@]}" --print-stickers | sed 's#^#/#' | xargs git -C src sparse-checkout add
 
       - id: pages
         uses: actions/configure-pages@v5

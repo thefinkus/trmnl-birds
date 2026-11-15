@@ -7,6 +7,9 @@ the largest free corner, Latin name and four facts in small print), `closeup`
 (head and shoulders at 1.75x, the bill always in frame) and `quiet` (the bird
 alone, one small line with both names). Composed server-side at the exact
 pixel size of each panel's full view, pre-dithered to the panel's grays, shown 1:1.
+A fourth picture, `calendar`, is a Framing choice outside the rotation: the
+month so far as a Monday-first calendar, each past day with its bird and name,
+today in a black disc, future days empty (on the 1-bit OG: this week only).
 
 ```
 GitHub Action (nightly, three slots from 02:17 Europe/Berlin, and on every push to main)
@@ -38,6 +41,12 @@ species (AVONET `primaryLifestyle`), often drawn in flight, get a body crop at
 when the bird reaches into that corner; the bird shrinks a step if neither is
 free.
 
+**Calendar:** every day's bird follows from the date alone (`pick`), so the
+build recomputes the month's earlier birds and fetches their stickers; nothing
+is stored between runs. Each row reserves room for its longest name (one line,
+else two at the same size), so the birds in a row stand on one baseline; a bird
+takes the whole cell and only steps aside when it would touch the day number.
+
 **Panels:** every framing is composed four times, for the X (1836x1368 inside
 the 18 px frame) and the OG (780x460 inside the 10 px frame), each in landscape
 and portrait. Lengths tuned on the X are halved on the OG; there the facts line
@@ -54,13 +63,14 @@ sides, which matters in the narrow portrait views.
 - `https://<user>.github.io/<repo>/today.json`: name, Latin name, family,
   mass, wing, habitat, migration, range, IUCN status, `image_url`,
   `variant_of_the_day`, and four sets of picture URLs, each with `hero`,
-  `closeup`, `quiet` and `today`: `images` (TRMNL X landscape, 1836x1368,
+  `closeup`, `quiet`, `calendar` and `today`: `images` (TRMNL X landscape, 1836x1368,
   16 grays), `images_portrait` (1368x1836), `images_og` (TRMNL OG landscape,
   780x460, 1-bit) and `images_og_portrait` (460x780); `targets` spells the
   sizes out
 - `today.png`, `today_portrait.png`, `today_og.png`, `today_og_portrait.png`:
   the day's picture for each panel and orientation
-- `hero*.png`, `closeup*.png`, `quiet*.png`: all three framings, same suffixes
+- `hero*.png`, `closeup*.png`, `quiet*.png`, `calendar*.png`: every framing,
+  same suffixes; `calendar` in today.json lists the month's birds by date
 
 ## Setup
 
@@ -96,7 +106,7 @@ your own copy from a fork:
 4. **Force Refresh**, check the previews, add to a playlist.
 
 **Framing** on the plugin's settings page picks the picture: daily rotation
-(default), hero, close-up or quiet. The markup reads
+(default), hero, close-up, quiet or calendar. The markup reads
 `trmnl.plugin_settings.custom_fields_values.framing` and takes the matching URL
 from `images`; unset or unknown falls back to `image_url`, the day's picture.
 The full layout holds four `<img>` tags and shows one: the framework's `lg:`
