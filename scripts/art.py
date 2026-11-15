@@ -751,13 +751,14 @@ def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
 
     num_size = max(14, sp.px(28))
     name_size, name_min = max(13, sp.px(24)), max(12, sp.px(18))
-    # every row reserves room for its longest name, so birds in a row share a baseline
-    row_lines = {}
+    # every cell, coming days included, reserves room for the longest name shown
+    # so far, so all birds get the same box and one scale across the calendar
+    name_lines = 1
     if not side:
-        for i, c in enumerate(cells):
+        for c in cells:
             if c and c <= day and c in birds:  # coming days carry no name
-                n = len(_name_lines(d, birds[c][1], cw - sp.px(4), name_size, name_min, 700)[1])
-                row_lines[i // cols] = max(row_lines.get(i // cols, 1), n)
+                name_lines = max(name_lines, len(_name_lines(d, birds[c][1], cw - sp.px(4), name_size, name_min, 700)[1]))
+    name_h = int(name_size * 1.18) * name_lines
     for i, c in enumerate(cells):
         if c is None:
             continue
@@ -798,7 +799,6 @@ def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
             continue
         f, lines = _name_lines(d, name or "X", cw - sp.px(4), name_size, name_min, weight)
         lh = int(f.size * 1.18)
-        name_h = lh * row_lines.get(i // cols, 1)
         if not name:
             lines = []
         by0, by1 = y0 + sp.px(4), int(y0 + ch - name_h - sp.px(8))

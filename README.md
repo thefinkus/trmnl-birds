@@ -44,9 +44,11 @@ free.
 **Calendar:** every day's bird follows from the date alone (`pick`), so the
 build recomputes the month's earlier birds and fetches their stickers; nothing
 is stored between runs. The coming days' birds are fixed the same way, so their
-shadows are the real next birds (look A, Carl's pick 2026-11-15; `CAL` in `art.py`). Each row reserves room for its longest name (one line,
-else two at the same size), so the birds in a row stand on one baseline; a bird
-takes the whole cell and only steps aside when it would touch the day number.
+shadows are the real next birds (look A, Carl's pick 2026-11-15; `CAL` in
+`art.py`). Every cell reserves room for the longest name shown so far (one
+line, else two at the same size), so all birds, the shadows included, get the
+same box and one scale; a bird takes the whole cell and only steps aside when it
+would touch the day number.
 
 **Panels:** every framing is composed four times, for the X (1836x1368 inside
 the 18 px frame) and the OG (780x460 inside the 10 px frame), each in landscape
