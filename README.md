@@ -1,15 +1,14 @@
 # Bird of the Day for TRMNL
 
 One bird a day on a TRMNL panel (X at 1872x1404 in 16 grays, OG at 800x480 in
-1-bit, landscape or portrait), in one of three framings
+1-bit, landscape or portrait), in one of four framings
 that rotate day by day: `hero` (the whole bird as big as it fits, its name in
 the largest free corner, Latin name and four facts in small print), `closeup`
-(head and shoulders at 1.75x, the bill always in frame) and `quiet` (the bird
-alone, one small line with both names). Composed server-side at the exact
+(head and shoulders at 1.75x, the bill always in frame), `quiet` (the bird
+alone, one small line with both names) and `calendar` (the month so far as a
+Monday-first calendar, each past day with its bird and name, today in a black
+disc, future days empty; on the 1-bit OG this week only). Composed server-side at the exact
 pixel size of each panel's full view, pre-dithered to the panel's grays, shown 1:1.
-A fourth picture, `calendar`, is a Framing choice outside the rotation: the
-month so far as a Monday-first calendar, each past day with its bird and name,
-today in a black disc, future days empty (on the 1-bit OG: this week only).
 
 ```
 GitHub Action (nightly, three slots from 02:17 Europe/Berlin, and on every push to main)
@@ -56,7 +55,9 @@ since any gray would dither to speckle. The name keeps its margin on both
 sides, which matters in the narrow portrait views.
 
 **Rotation:** `VARIANTS` in `scripts/build.py`, one step per day from
-`VARIANT_EPOCH` (2026-11-02 shows `hero`). `--variant` forces one for a run.
+`VARIANT_EPOCH` (2026-11-02 shows `hero`). `calendar` joined on 2026-11-15 as
+the fourth step, which kept that day on `closeup` (13 % 3 = 13 % 4 = 1); the
+first calendar day is 2026-11-17. `--variant` forces one for a run.
 
 ## Published files
 
