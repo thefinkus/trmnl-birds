@@ -623,11 +623,12 @@ def quiet(st: Sticker, info: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
 
 WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
-# Calendar look (Carl's pick B, 2026-11-15): coming days show their bird as a
+# Calendar look (Carl's pick A, 2026-11-15): coming days show their bird as a
 # flat pale shadow (on the 1-bit OG a thin outline, since a flat gray would
-# dither to speckle) with no name, their numbers in mid gray; today gets a box
-# around its cell and a black disc, its name in regular weight.
-CAL = {"future": "fill", "today_frame": True, "future_ink": MID}
+# dither to speckle) with no name, their numbers in mid gray; today keeps its
+# black disc and a bold name. today_frame=True would box today's cell instead
+# of the bold name (look B, live for one evening).
+CAL = {"future": "fill", "today_frame": False, "future_ink": MID}
 
 
 def _silhouette(im: Image.Image, mode: str, sp: Spec) -> Image.Image:
@@ -702,7 +703,7 @@ def _day_mark(d, sp, x, y, label, today, past, size):
 
 def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
     """The month so far: a calendar whose past days carry their bird and name,
-    today boxed, coming days only their bird's shadow (see CAL). `birds` maps
+    today in a black disc, coming days only their bird's shadow (see CAL). `birds` maps
     a date to (Sticker, name)."""
     W, H = sp.size
     M = sp.margin

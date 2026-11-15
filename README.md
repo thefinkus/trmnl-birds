@@ -6,8 +6,8 @@ that rotate day by day: `hero` (the whole bird as big as it fits, its name in
 the largest free corner, Latin name and four facts in small print), `closeup`
 (head and shoulders at 1.75x, the bill always in frame), `quiet` (the bird
 alone, one small line with both names) and `calendar` (the month so far as a
-Monday-first calendar, each past day with its bird and name, today boxed with
-a black disc, coming days only as a pale shadow of their bird; on the 1-bit OG
+Monday-first calendar, each past day with its bird and name, today in a black
+disc with a bold name, coming days only as a pale shadow of their bird; on the 1-bit OG
 this week only, shadows as outlines). Composed server-side at the exact
 pixel size of each panel's full view, pre-dithered to the panel's grays, shown 1:1.
 
@@ -44,7 +44,7 @@ free.
 **Calendar:** every day's bird follows from the date alone (`pick`), so the
 build recomputes the month's earlier birds and fetches their stickers; nothing
 is stored between runs. The coming days' birds are fixed the same way, so their
-shadows are the real next birds (look B, Carl's pick 2026-11-15; `CAL` in `art.py`). Each row reserves room for its longest name (one line,
+shadows are the real next birds (look A, Carl's pick 2026-11-15; `CAL` in `art.py`). Each row reserves room for its longest name (one line,
 else two at the same size), so the birds in a row stand on one baseline; a bird
 takes the whole cell and only steps aside when it would touch the day number.
 
