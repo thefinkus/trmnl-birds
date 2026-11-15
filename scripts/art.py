@@ -464,14 +464,64 @@ def hero(st: Sticker, info: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
 
 # ---------------------------------------------------------------- closeup
 
-def _head(st: Sticker):
-    """(hx, hy, cx): the head, taken as the topmost band of the silhouette.
-    Right for perched and standing birds, which is nearly all of the
-    stickers; a bird in flight with a raised wing gets the wingtip instead."""
-    xs, ys = alpha_points(st.im)
+def _top_band(xs, ys, h):
     top = ys.min()
-    band = xs[ys < top + max(3, st.h * 0.08)]
-    return float(np.median(band)), float(top), float(np.median(xs))
+    return float(np.median(xs[ys < top + max(3, h * 0.08)])), float(top)
+
+
+def _depth(mask: np.ndarray) -> np.ndarray:
+    """How far each pixel lies inside the silhouette (chessboard steps)."""
+    d = np.zeros(mask.shape, np.int32)
+    cur, i = mask.copy(), 0
+    while cur.any():
+        i += 1
+        d[cur] = i
+        p = np.pad(cur, 1)
+        cur = p[1:-1, 1:-1] & p[:-2, 1:-1] & p[2:, 1:-1] & p[1:-1, :-2] & p[1:-1, 2:]
+    return d
+
+
+def _cocked_tail(st: Sticker, hx: float, hy: float, cx: float) -> bool:
+    """True when the topmost band (hx, hy) is a raised tail, not the head.
+
+    Two signs, both needed: (1) the topmost thick part (body or head; tails,
+    legs, bills and wingtips are thin and drop out) lies across the body from
+    hx; (2) the band hangs over empty space, so straight below it the
+    silhouette runs out. A long neck (flamingo, tinamou, cassowary) fails the
+    second test, since it runs down into the body."""
+    s = 256 / max(st.w, st.h)
+    a = st.im.getchannel("A").resize((max(1, round(st.w * s)), max(1, round(st.h * s))), Image.BILINEAR)
+    m = np.asarray(a) > 120
+    d = _depth(m)
+    t = max(2, 0.45 * d.max())
+    ys, xs = np.nonzero(d >= t)
+    tx = float(np.median(xs[ys < ys.min() + max(2, int(t * 1.5))])) / s
+    if not ((hx - cx) * (tx - cx) < 0 and abs(hx - tx) > 0.3 * st.w):
+        return False
+    win = m.shape[1] * 0.12
+    x0, x1 = max(0, int(hx * s - win)), int(hx * s + win) + 1
+    top = int(hy * s)
+    prof = d[top: top + int(m.shape[0] * 0.4), x0:x1].max(axis=1) / d.max()
+    return bool(prof.size) and prof[int(np.argmax(prof[: max(1, prof.size // 2)])):].min() < 0.05
+
+
+def _head(st: Sticker):
+    """(hx, hy, cx, xs, ys): the head, taken as the topmost band of the
+    silhouette, and the silhouette points on the head's side.
+
+    Right for perched and standing birds, which is nearly all of the stickers.
+    A cocked tail (forktails, fairywrens, tailorbirds, magpie-robins) can reach
+    higher than the head (see `_cocked_tail`); then the head is looked for
+    only on the other side of the body. A bird in flight with a raised wing
+    still gets the wingtip."""
+    xs, ys = alpha_points(st.im)
+    cx = float(np.median(xs))
+    hx, hy = _top_band(xs, ys, st.h)
+    if _cocked_tail(st, hx, hy, cx):
+        keep = xs > cx if hx < cx else xs < cx
+        xs, ys = xs[keep], ys[keep]
+        hx, hy = _top_band(xs, ys, st.h)
+    return hx, hy, cx, xs, ys
 
 
 def closeup(st: Sticker, info: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
@@ -488,10 +538,11 @@ def closeup(st: Sticker, info: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
         x, y = int(W * 0.5 - bx * k), int(H * 0.52 - by * k)
     else:
         k = base * 1.75
-        hx, hy, cx = _head(st)
-        # the head rows (top 30% of the silhouette, bill included) must fit on screen
-        head_rows = ys < ys.min() + st.h * 0.30
-        hx0, hx1 = float(xs[head_rows].min()), float(xs[head_rows].max())
+        hx, hy, cx, hxs, hys = _head(st)
+        # the head rows (30% of the bird's height from the top of the head,
+        # bill included, on the head's side) must fit on screen
+        head_rows = hys < hy + st.h * 0.30
+        hx0, hx1 = float(hxs[head_rows].min()), float(hxs[head_rows].max())
         k = max(base * 1.15, min(k, (W - 2 * margin) / max(1.0, hx1 - hx0)))
         # head towards the emptier side, a third down the screen
         px_ = W * (0.60 if hx > cx else 0.40)
