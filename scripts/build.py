@@ -163,10 +163,11 @@ def main(argv=None) -> int:
         return 2
     s, idx = (next(x for x in species if x["id"] == a.id), -1) if a.id else pick(pool, day)
 
-    # the calendar picture: every past day of this month and of this week
+    # the calendar picture: every day of this month and of this week; coming
+    # days show only their bird's shadow
     month, week = calendar_dates(day)
     cal = {}
-    for c in sorted({c for c in month + week if c and c <= day}):
+    for c in sorted({c for c in month + week if c}):
         cal[c] = s if c == day else pick(pool, c)[0]
 
     if a.print_stickers:
@@ -211,7 +212,7 @@ def main(argv=None) -> int:
         **sets,
         "targets": targets,
         "variant_of_the_day": vod,
-        "calendar": [{"date": c.isoformat(), "name": n, "id": cal[c]["id"]} for c, (_, n) in cal_birds.items()],
+        "calendar": [{"date": c.isoformat(), "name": n, "id": cal[c]["id"]} for c, (_, n) in cal_birds.items() if c <= day],
         "pool": {"region": a.region or "ALL", "size": len(pool), "index": idx},
         "source": {"taxonomy": data.get("taxonomy"), "version": data.get("version"),
                    "ref": os.environ.get("SOURCE_REF", "")},

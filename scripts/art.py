@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 FONTS = ROOT / "assets" / "fonts"
@@ -623,6 +623,28 @@ def quiet(st: Sticker, info: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
 
 WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
+# Calendar look (Carl's pick B, 2026-11-15): coming days show their bird as a
+# flat pale shadow (on the 1-bit OG a thin outline, since a flat gray would
+# dither to speckle) with no name, their numbers in mid gray; today gets a box
+# around its cell and a black disc, its name in regular weight.
+CAL = {"future": "fill", "today_frame": True, "future_ink": MID}
+
+
+def _silhouette(im: Image.Image, mode: str, sp: Spec) -> Image.Image:
+    """The bird's shape only: a flat pale fill, or its contour on a 1-bit panel."""
+    mask = im.getchannel("A").point(lambda v: 255 if v > 100 else 0)
+    if mode == "outline" or sp.levels == 2:
+        w = max(1, sp.px(2))
+        big = Image.new("L", (im.width + 2 * w, im.height + 2 * w), 0)
+        big.paste(mask, (w, w))
+        a = ImageChops.subtract(big.filter(ImageFilter.MaxFilter(2 * w + 1)), big)
+        out = Image.new("RGBA", a.size, (BLACK if sp.levels == 2 else MID,) * 3 + (0,))
+        out.putalpha(a)
+        return out
+    out = Image.new("RGBA", mask.size, (PALE, PALE, PALE, 0))
+    out.putalpha(mask)
+    return out
+
 
 def calendar_days(day) -> list:
     """The dates a calendar picture shows, past ones with a bird. The X gets
@@ -674,13 +696,14 @@ def _day_mark(d, sp, x, y, label, today, past, size):
         d.rounded_rectangle((cx - half, cy - r, cx + half, cy + r), radius=r, fill=col(BLACK))
         d.text((cx - tw / 2 - bb[0], cy - (bb[3] - bb[1]) / 2 - bb[1]), label, font=f, fill=col(WHITE))
         return
-    ink = BLACK if sp.levels == 2 else (DARK if past else LIGHT)
+    ink = BLACK if sp.levels == 2 else (DARK if past else CAL["future_ink"])
     d.text((x - bb[0], y - bb[1]), label, font=f, fill=col(ink))
 
 
 def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
-    """The month so far: a calendar whose past days carry their bird, today
-    marked, future days empty. `birds` maps a date to (Sticker, name)."""
+    """The month so far: a calendar whose past days carry their bird and name,
+    today boxed, coming days only their bird's shadow (see CAL). `birds` maps
+    a date to (Sticker, name)."""
     W, H = sp.size
     M = sp.margin
     month, week = calendar_days(day)
@@ -731,7 +754,7 @@ def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
     row_lines = {}
     if not side:
         for i, c in enumerate(cells):
-            if c and c <= day and c in birds:
+            if c and c <= day and c in birds:  # coming days carry no name
                 n = len(_name_lines(d, birds[c][1], cw - sp.px(4), name_size, name_min, 700)[1])
                 row_lines[i // cols] = max(row_lines.get(i // cols, 1), n)
     for i, c in enumerate(cells):
@@ -742,17 +765,28 @@ def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
         is_today, past = c == day, c <= day
         label = f"{WEEKDAYS[c.weekday()].title()} {c.day}" if side else str(c.day)
         _day_mark(d, sp, x0, y0, label, is_today, past, num_size)
-        if not past or c not in birds:
+        if is_today and CAL["today_frame"]:
+            pad = sp.px(7)
+            d.rounded_rectangle((x0 - pad, y0 - pad, int(x0 + cw + pad), int(y0 + ch + pad)),
+                                radius=sp.px(18), outline=col(BLACK), width=max(2, sp.px(3)))
+        if c not in birds or (not past and not CAL["future"]):
             continue
         st, name = birds[c]
-        weight = 700 if is_today else 500
+        if not past:
+            name = ""
+        weight = 700 if is_today and not CAL["today_frame"] else 500
         ink = col(BLACK if is_today or sp.levels == 2 else DARK)
+
+        def look(im):
+            return sharpen(im, sp) if past else _silhouette(im, CAL["future"], sp)
         if side:
             # number left, bird in the middle, name right
             lab_w = text_w(d, "Wed 30", font("sans", num_size, 700)) + sp.px(36)
             bw = int(cw * 0.32)
-            bird = sharpen(fit(st, bw, ch - sp.px(4)), sp)
+            bird = look(fit(st, bw, ch - sp.px(4)))
             cv.alpha_composite(bird, (x0 + lab_w + (bw - bird.width) // 2, int(y0 + ch - bird.height)))
+            if not name:
+                continue
             nx = x0 + lab_w + bw + sp.px(16)
             f, lines = _name_lines(d, name, x0 + cw - nx, name_size, name_min, weight)
             lh = int(f.size * 1.18)
@@ -761,9 +795,11 @@ def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
                 _put(d, ln, f, nx, y, ink, False)
                 y += lh
             continue
-        f, lines = _name_lines(d, name, cw - sp.px(4), name_size, name_min, weight)
+        f, lines = _name_lines(d, name or "X", cw - sp.px(4), name_size, name_min, weight)
         lh = int(f.size * 1.18)
         name_h = lh * row_lines.get(i // cols, 1)
+        if not name:
+            lines = []
         by0, by1 = y0 + sp.px(4), int(y0 + ch - name_h - sp.px(8))
         # the bird gets the whole cell above its name; it only steps aside
         # (right-aligned, then shrunk into the room beside the number) when
@@ -779,7 +815,7 @@ def calendar(day, birds: dict, sp: Spec = X_LANDSCAPE) -> Image.Image:
             if mode == "beside" or ax1 <= ax0 or ay1 <= ay0 or \
                     not (np.asarray(bird.getchannel("A"))[ay0:ay1, ax0:ax1] > 40).any():
                 break
-        cv.alpha_composite(sharpen(bird, sp), (bx, by))
+        cv.alpha_composite(look(bird), (bx, by))
         y = by1 + sp.px(8)
         for ln in lines:
             _put(d, ln, f, x0, y, ink, False)
